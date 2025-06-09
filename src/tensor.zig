@@ -64,6 +64,14 @@ pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
             const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
             return SubTensorView(idxs.len).init(self.data[start_idx..final_idx]);
         }
+
+        pub inline fn reshape(self: *@This(), comptime shape: anytype) TensorView(dtype, shape) {
+            const result = TensorView(dtype, shape).init(self.data);
+            if (comptime result.n_scalars != self.n_scalars) {
+                @compileError("Invalid reshape size (the final number of scalars don't match the current tensor)");
+            }
+            return result;
+        }
     };
 }
 

@@ -81,12 +81,21 @@ const TENSOR_2D = struct {
         try expectEqual(data[8], tensor.get(.{ 2, 2 }).*);
     }
     test "get sub tensor content (vector)" {
-        var data: [9]f64 = .{ 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+        var data: [9]f64 = createSequence(f64, 9);
         var tensor = TensorView(f64, .{ 3, 3 }).init(data[0..]);
 
         try expectEqual(data[0..3], tensor.get(.{0}).data);
         try expectEqual(data[3..6], tensor.get(.{1}).data);
         try expectEqual(data[6..9], tensor.get(.{2}).data);
+    }
+    test "reshape 4x4 to 2x8" {
+        var data: [16]f64 = createSequence(f64, 16);
+        var tensor = TensorView(f64, .{ 4, 4 }).init(data[0..]);
+
+        var new_tensor = tensor.reshape(.{ 2, 8 });
+
+        try expectEqual(data[0..8], new_tensor.get(.{0}).data);
+        try expectEqual(data[8..16], new_tensor.get(.{1}).data);
     }
 };
 
@@ -194,5 +203,16 @@ const TENSOR_3D = struct {
         try expectEqual(data[9..18], tensor.get(.{1}).data);
 
         try expectEqual(data[18..27], tensor.get(.{2}).data);
+    }
+    test "reshape 2x3x4 to 4x3x2" {
+        var data: [24]f64 = createSequence(f64, 24);
+        var tensor = TensorView(f64, .{ 2, 3, 4 }).init(data[0..]);
+
+        var new_tensor = tensor.reshape(.{ 4, 3, 2 });
+
+        try expectEqual(data[0..6], new_tensor.get(.{0}).data);
+        try expectEqual(data[6..12], new_tensor.get(.{1}).data);
+        try expectEqual(data[12..18], new_tensor.get(.{2}).data);
+        try expectEqual(data[18..24], new_tensor.get(.{3}).data);
     }
 };
