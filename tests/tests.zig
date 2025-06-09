@@ -28,9 +28,11 @@ const TENSOR_1D = struct {
         try expectEqual(2, tensor.scalar(.{1}));
         try expectEqual(3, tensor.scalar(.{2}));
     }
-    test "get sub tensor (scalar)" {
+    test "get sub tensor content (scalar)" {
         var data: [3]f64 = .{ 1, 2, 3 };
         var tensor = TensorView(f64, .{3}).init(data[0..]);
+        try expectEqual(&data[0], tensor.get(.{0}));
+        try expectEqual(&data[1], tensor.get(.{1}));
         try expectEqual(&data[2], tensor.get(.{2}));
     }
 };
@@ -50,17 +52,41 @@ const TENSOR_2D = struct {
         var data: [9]f64 = .{ 1, 2, 3, 4, 5, 6, 7, 8, 9 };
         var tensor = TensorView(f64, .{ 3, 3 }).init(data[0..]);
 
-        try expectEqual(1, tensor.scalar(.{ 0, 0 }));
-        try expectEqual(2, tensor.scalar(.{ 0, 1 }));
-        try expectEqual(3, tensor.scalar(.{ 0, 2 }));
+        try expectEqual(data[0], tensor.scalar(.{ 0, 0 }));
+        try expectEqual(data[1], tensor.scalar(.{ 0, 1 }));
+        try expectEqual(data[2], tensor.scalar(.{ 0, 2 }));
 
-        try expectEqual(4, tensor.scalar(.{ 1, 0 }));
-        try expectEqual(5, tensor.scalar(.{ 1, 1 }));
-        try expectEqual(6, tensor.scalar(.{ 1, 2 }));
+        try expectEqual(data[3], tensor.scalar(.{ 1, 0 }));
+        try expectEqual(data[4], tensor.scalar(.{ 1, 1 }));
+        try expectEqual(data[5], tensor.scalar(.{ 1, 2 }));
 
-        try expectEqual(7, tensor.scalar(.{ 2, 0 }));
-        try expectEqual(8, tensor.scalar(.{ 2, 1 }));
-        try expectEqual(9, tensor.scalar(.{ 2, 2 }));
+        try expectEqual(data[6], tensor.scalar(.{ 2, 0 }));
+        try expectEqual(data[7], tensor.scalar(.{ 2, 1 }));
+        try expectEqual(data[8], tensor.scalar(.{ 2, 2 }));
+    }
+    test "get sub tensor content (scalar)" {
+        var data: [9]f64 = .{ 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+        var tensor = TensorView(f64, .{ 3, 3 }).init(data[0..]);
+
+        try expectEqual(data[0], tensor.get(.{ 0, 0 }).*);
+        try expectEqual(data[1], tensor.get(.{ 0, 1 }).*);
+        try expectEqual(data[2], tensor.get(.{ 0, 2 }).*);
+
+        try expectEqual(data[3], tensor.get(.{ 1, 0 }).*);
+        try expectEqual(data[4], tensor.get(.{ 1, 1 }).*);
+        try expectEqual(data[5], tensor.get(.{ 1, 2 }).*);
+
+        try expectEqual(data[6], tensor.get(.{ 2, 0 }).*);
+        try expectEqual(data[7], tensor.get(.{ 2, 1 }).*);
+        try expectEqual(data[8], tensor.get(.{ 2, 2 }).*);
+    }
+    test "get sub tensor content (vector)" {
+        var data: [9]f64 = .{ 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+        var tensor = TensorView(f64, .{ 3, 3 }).init(data[0..]);
+
+        try expectEqual(data[0..3], tensor.get(.{0}).data);
+        try expectEqual(data[3..6], tensor.get(.{1}).data);
+        try expectEqual(data[6..9], tensor.get(.{2}).data);
     }
 };
 
@@ -79,34 +105,34 @@ const TENSOR_3D = struct {
         var data: [27]f64 = createSequence(f64, 27);
         var tensor = TensorView(f64, .{ 3, 3, 3 }).init(data[0..]);
 
-        try expectEqual(0, tensor.scalar(.{ 0, 0, 0 }));
-        try expectEqual(1, tensor.scalar(.{ 0, 0, 1 }));
-        try expectEqual(2, tensor.scalar(.{ 0, 0, 2 }));
-        try expectEqual(3, tensor.scalar(.{ 0, 1, 0 }));
-        try expectEqual(4, tensor.scalar(.{ 0, 1, 1 }));
-        try expectEqual(5, tensor.scalar(.{ 0, 1, 2 }));
-        try expectEqual(6, tensor.scalar(.{ 0, 2, 0 }));
-        try expectEqual(7, tensor.scalar(.{ 0, 2, 1 }));
-        try expectEqual(8, tensor.scalar(.{ 0, 2, 2 }));
+        try expectEqual(data[0], tensor.scalar(.{ 0, 0, 0 }));
+        try expectEqual(data[1], tensor.scalar(.{ 0, 0, 1 }));
+        try expectEqual(data[2], tensor.scalar(.{ 0, 0, 2 }));
+        try expectEqual(data[3], tensor.scalar(.{ 0, 1, 0 }));
+        try expectEqual(data[4], tensor.scalar(.{ 0, 1, 1 }));
+        try expectEqual(data[5], tensor.scalar(.{ 0, 1, 2 }));
+        try expectEqual(data[6], tensor.scalar(.{ 0, 2, 0 }));
+        try expectEqual(data[7], tensor.scalar(.{ 0, 2, 1 }));
+        try expectEqual(data[8], tensor.scalar(.{ 0, 2, 2 }));
 
-        try expectEqual(9, tensor.scalar(.{ 1, 0, 0 }));
-        try expectEqual(10, tensor.scalar(.{ 1, 0, 1 }));
-        try expectEqual(11, tensor.scalar(.{ 1, 0, 2 }));
-        try expectEqual(12, tensor.scalar(.{ 1, 1, 0 }));
-        try expectEqual(13, tensor.scalar(.{ 1, 1, 1 }));
-        try expectEqual(14, tensor.scalar(.{ 1, 1, 2 }));
-        try expectEqual(15, tensor.scalar(.{ 1, 2, 0 }));
-        try expectEqual(16, tensor.scalar(.{ 1, 2, 1 }));
-        try expectEqual(17, tensor.scalar(.{ 1, 2, 2 }));
+        try expectEqual(data[9], tensor.scalar(.{ 1, 0, 0 }));
+        try expectEqual(data[10], tensor.scalar(.{ 1, 0, 1 }));
+        try expectEqual(data[11], tensor.scalar(.{ 1, 0, 2 }));
+        try expectEqual(data[12], tensor.scalar(.{ 1, 1, 0 }));
+        try expectEqual(data[13], tensor.scalar(.{ 1, 1, 1 }));
+        try expectEqual(data[14], tensor.scalar(.{ 1, 1, 2 }));
+        try expectEqual(data[15], tensor.scalar(.{ 1, 2, 0 }));
+        try expectEqual(data[16], tensor.scalar(.{ 1, 2, 1 }));
+        try expectEqual(data[17], tensor.scalar(.{ 1, 2, 2 }));
 
-        try expectEqual(18, tensor.scalar(.{ 2, 0, 0 }));
-        try expectEqual(19, tensor.scalar(.{ 2, 0, 1 }));
-        try expectEqual(20, tensor.scalar(.{ 2, 0, 2 }));
-        try expectEqual(21, tensor.scalar(.{ 2, 1, 0 }));
-        try expectEqual(22, tensor.scalar(.{ 2, 1, 1 }));
-        try expectEqual(23, tensor.scalar(.{ 2, 1, 2 }));
-        try expectEqual(24, tensor.scalar(.{ 2, 2, 0 }));
-        try expectEqual(25, tensor.scalar(.{ 2, 2, 1 }));
-        try expectEqual(26, tensor.scalar(.{ 2, 2, 2 }));
+        try expectEqual(data[18], tensor.scalar(.{ 2, 0, 0 }));
+        try expectEqual(data[19], tensor.scalar(.{ 2, 0, 1 }));
+        try expectEqual(data[20], tensor.scalar(.{ 2, 0, 2 }));
+        try expectEqual(data[21], tensor.scalar(.{ 2, 1, 0 }));
+        try expectEqual(data[22], tensor.scalar(.{ 2, 1, 1 }));
+        try expectEqual(data[23], tensor.scalar(.{ 2, 1, 2 }));
+        try expectEqual(data[24], tensor.scalar(.{ 2, 2, 0 }));
+        try expectEqual(data[25], tensor.scalar(.{ 2, 2, 1 }));
+        try expectEqual(data[26], tensor.scalar(.{ 2, 2, 2 }));
     }
 };

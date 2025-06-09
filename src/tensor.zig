@@ -2,6 +2,7 @@ const std = @import("std");
 
 pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
     const dtype_info = @typeInfo(dtype);
+    const shape_arr = asArray(dtype, _shape);
     const shape_vec = asVector(dtype, _shape);
     const total_num_scalars = @reduce(.Mul, shape_vec);
     if (dtype_info != .float and dtype_info != .int) {
@@ -11,6 +12,7 @@ pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
     return struct {
         comptime shape: @Vector(_shape.len, usize) = shape_vec,
         comptime strides: @Vector(_shape.len, usize) = _strides,
+        comptime n_scalars: usize = total_num_scalars,
 
         data: []dtype,
 
@@ -33,11 +35,11 @@ pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
         }
 
         fn SubTensorView(comptime size: usize) type {
-            return TensorView(dtype, toArray(_shape)[size..]);
+            return TensorView(dtype, comptime asSubArray(usize, shape_arr, size, shape_arr.len - 1));
         }
 
         fn GetSubTensorViewResult(comptime size: usize) type {
-            if (_shape.len - size == 0) {
+            if (comptime _shape.len - size == 0) {
                 return *dtype;
             }
             return SubTensorView(size);
@@ -45,6 +47,9 @@ pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
 
         /// get a subtensor. `idxs` needs to be an array.
         pub fn get(self: *@This(), idxs: anytype) GetSubTensorViewResult(idxs.len) {
+            if (comptime idxs.len == 0) {
+                @compileError("index sequence must have a positive non-zero length");
+            }
             if (comptime _shape.len - idxs.len == 0) {
                 return self.scalar_mut(idxs);
             }
@@ -55,8 +60,8 @@ pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
                 undefined,
                 to_sub_tensor_mask,
             );
-            const start_idx = @reduce(.Add, strides_to_sub_tensor * idxs);
-            const final_idx = start_idx + strides_to_sub_tensor[strides_to_sub_tensor.len - 1];
+            const start_idx = @reduce(.Add, strides_to_sub_tensor * asVector(usize, idxs));
+            const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
             return SubTensorView(idxs.len).init(self.data[start_idx..final_idx]);
         }
     };
@@ -70,25 +75,40 @@ pub fn createSequence(comptime dtype: type, comptime n: usize) [n]dtype {
     return seq;
 }
 
-fn toArray(tuple: anytype) [tuple.len]@FieldType(@TypeOf(tuple), "0") {
-    const TupleType = @TypeOf(tuple);
-    const field_count = if (comptime @hasDecl(TupleType, "len")) tuple.len else std.meta.fields(TupleType).len;
-    const T = comptime @FieldType(@TypeOf(tuple), "0");
+fn GetTypeLength(comptime T: type) usize {
+    const type_info = @typeInfo(T);
+    const type_info_data = @field(type_info, @tagName(std.meta.activeTag(type_info)));
+    return if (comptime @hasField(@TypeOf(type_info_data), "len")) type_info_data.len else std.meta.fields(T).len;
+}
+
+fn GetChildType(comptime T: type) type {
+    const type_info = @typeInfo(T);
+    const type_info_data = @field(type_info, @tagName(std.meta.activeTag(type_info)));
+    return if (comptime @hasDecl(@TypeOf(type_info_data), "child")) type_info_data.child else @FieldType(T, "0");
+}
+
+fn asArray(comptime T: type, tuple: anytype) [GetTypeLength(@TypeOf(tuple))]T {
+    if (@typeInfo(T) == .array) return T;
+    const field_count = comptime GetTypeLength(@TypeOf(tuple));
 
     var array: [field_count]T = undefined;
-    for (0..field_count) |i| {
-        @compileLog(@TypeOf(tuple[i]));
+    inline for (0..field_count) |i| {
         array[i] = tuple[i];
     }
     return array;
 }
 
-fn asVector(comptime dtype: type, seq: anytype) @Vector(seq.len, dtype) {
-    var vec: @Vector(seq.len, dtype) = undefined;
-    for (seq, 0..) |a, i| {
-        vec[i] = a;
+fn asSubArray(comptime T: type, arr: anytype, start_idx: usize, end_idx: usize) [end_idx - start_idx + 1]T {
+    const size = comptime end_idx - start_idx + 1;
+    var result: [size]T = undefined;
+    for (0..size) |i| {
+        result[i] = arr[start_idx + i];
     }
-    return vec;
+    return result;
+}
+
+fn asVector(comptime T: type, seq: anytype) @Vector(GetTypeLength(@TypeOf(seq)), T) {
+    return asArray(T, seq);
 }
 
 fn calculateStrides(comptime dtype: type, comptime shape: anytype) @Vector(shape.len, dtype) {
