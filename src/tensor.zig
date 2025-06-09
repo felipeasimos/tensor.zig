@@ -25,12 +25,12 @@ pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
             random.bytes(std.mem.asBytes(&self.data));
         }
 
-        pub fn scalar_mut(self: *@This(), idxs: @Vector(_shape.len, usize)) *dtype {
+        pub inline fn scalar_mut(self: *@This(), idxs: @Vector(_shape.len, usize)) *dtype {
             const idx = @reduce(.Add, self.strides * idxs);
             return &self.data[idx];
         }
 
-        pub fn scalar(self: *@This(), idxs: @Vector(_shape.len, usize)) dtype {
+        pub inline fn scalar(self: *@This(), idxs: @Vector(_shape.len, usize)) dtype {
             return self.scalar_mut(idxs).*;
         }
 
@@ -46,7 +46,7 @@ pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
         }
 
         /// get a subtensor. `idxs` needs to be an array.
-        pub fn get(self: *@This(), idxs: anytype) GetSubTensorViewResult(idxs.len) {
+        pub inline fn get(self: *@This(), idxs: anytype) GetSubTensorViewResult(idxs.len) {
             if (comptime idxs.len == 0) {
                 @compileError("index sequence must have a positive non-zero length");
             }
