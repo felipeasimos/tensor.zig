@@ -2,16 +2,16 @@ const std = @import("std");
 const Range = @import("range.zig").Range;
 
 pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
-    return InnerTensorView(dtype, _shape, calculateStrides(dtype, _shape));
+    return InnerTensorView(dtype, _shape, calculateStrides(_shape));
 }
 
 fn InnerTensorView(comptime dtype: type, comptime _shape: anytype, comptime _strides: anytype) type {
     const dtype_info = @typeInfo(dtype);
 
-    const shape_arr = asArray(dtype, _shape);
-    const shape_vec = asVector(dtype, _shape);
+    const shape_arr = asArray(usize, _shape);
+    const shape_vec = asVector(usize, _shape);
 
-    const strides_arr = asArray(dtype, _strides);
+    const strides_arr = asArray(usize, _strides);
     // const strides_vec = asVector(dtype, _strides);
 
     const total_num_scalars = @reduce(.Mul, shape_vec);
@@ -74,7 +74,15 @@ fn InnerTensorView(comptime dtype: type, comptime _shape: anytype, comptime _str
             return GetSubTensorViewResult(idxs.len).init(self.data[start_idx..final_idx]);
         }
 
+        fn stridesAreContiguous() bool {
+            const contiguous_strides: [strides_arr.len]usize = calculateStrides(shape_arr);
+            return std.mem.eql(usize, &strides_arr, &contiguous_strides);
+        }
+
         pub inline fn reshape(self: *@This(), comptime shape: anytype) TensorView(dtype, shape) {
+            if (comptime !stridesAreContiguous()) {
+                @compileError("Can't reshape a tensor without contiguous strides");
+            }
             const result = TensorView(dtype, shape).init(self.data);
             if (comptime result.n_scalars != self.n_scalars) {
                 @compileError("Invalid reshape size (the final number of scalars don't match the current tensor)");
@@ -128,7 +136,7 @@ fn asVector(comptime T: type, seq: anytype) @Vector(GetTypeLength(@TypeOf(seq)),
     return asArray(T, seq);
 }
 
-fn calculateStrides(comptime dtype: type, comptime shape: anytype) @Vector(shape.len, dtype) {
+fn calculateStrides(comptime shape: anytype) @Vector(shape.len, usize) {
     var strides: [shape.len]usize = .{1} ** shape.len;
     for (1..shape.len) |i| {
         const idx = shape.len - i - 1;
