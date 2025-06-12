@@ -1,14 +1,23 @@
 const std = @import("std");
+const Range = @import("range.zig").Range;
 
 pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
+    return InnerTensorView(dtype, _shape, calculateStrides(dtype, _shape));
+}
+
+fn InnerTensorView(comptime dtype: type, comptime _shape: anytype, comptime _strides: anytype) type {
     const dtype_info = @typeInfo(dtype);
+
     const shape_arr = asArray(dtype, _shape);
     const shape_vec = asVector(dtype, _shape);
+
+    const strides_arr = asArray(dtype, _strides);
+    // const strides_vec = asVector(dtype, _strides);
+
     const total_num_scalars = @reduce(.Mul, shape_vec);
     if (dtype_info != .float and dtype_info != .int) {
         @compileError("Only floats and integers are valid tensor dtypes");
     }
-    const _strides = calculateStrides(dtype, _shape);
     return struct {
         comptime shape: @Vector(_shape.len, usize) = shape_vec,
         comptime strides: @Vector(_shape.len, usize) = _strides,
@@ -34,15 +43,15 @@ pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
             return self.scalar_mut(idxs).*;
         }
 
-        fn SubTensorView(comptime size: usize) type {
-            return TensorView(dtype, comptime asSubArray(usize, shape_arr, size, shape_arr.len - 1));
-        }
-
         fn GetSubTensorViewResult(comptime size: usize) type {
             if (comptime _shape.len - size == 0) {
                 return *dtype;
             }
-            return SubTensorView(size);
+            return InnerTensorView(
+                dtype,
+                comptime asSubArray(usize, shape_arr, size, shape_arr.len - 1),
+                comptime asSubArray(usize, strides_arr, size, strides_arr.len - 1),
+            );
         }
 
         /// get a subtensor. `idxs` needs to be an array.
@@ -62,7 +71,7 @@ pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
             );
             const start_idx = @reduce(.Add, strides_to_sub_tensor * asVector(usize, idxs));
             const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
-            return SubTensorView(idxs.len).init(self.data[start_idx..final_idx]);
+            return GetSubTensorViewResult(idxs.len).init(self.data[start_idx..final_idx]);
         }
 
         pub inline fn reshape(self: *@This(), comptime shape: anytype) TensorView(dtype, shape) {
