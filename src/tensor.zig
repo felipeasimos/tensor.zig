@@ -100,7 +100,19 @@ fn InnerTensorView(comptime dtype: type, comptime _shape: anytype, comptime _str
             return InnerTensorView(dtype, new_shape, new_strides);
         }
 
+        fn validateRanges(comptime ranges: anytype) bool {
+            for (ranges, 0..) |range, i| {
+                if (range[1] <= range[0] or range[1] > shape_arr[i]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         pub inline fn slice(self: *@This(), comptime ranges: anytype) SliceResult(ranges) {
+            if (comptime !validateRanges(ranges)) {
+                @compileError("Invalid slicing ranges");
+            }
             if (comptime !stridesAreContiguous()) {
                 @compileError("Can't slice a tensor without contiguous strides");
             }
