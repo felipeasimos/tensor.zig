@@ -1,7 +1,7 @@
 const std = @import("std");
-const Range = @import("range.zig").Range;
 
 pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
+    @setEvalBranchQuota(100000);
     return InnerTensorView(dtype, _shape, calculateStrides(_shape));
 }
 
@@ -12,40 +12,41 @@ fn InnerTensorView(comptime dtype: type, comptime _shape: anytype, comptime _str
     const shape_vec = asVector(usize, _shape);
 
     const strides_arr = asArray(usize, _strides);
-    // const strides_vec = asVector(dtype, _strides);
+    const strides_vec = asVector(usize, _strides);
 
     const total_num_scalars = @reduce(.Mul, shape_vec);
+    const highest_idx = @reduce(
+        .Add,
+        (shape_vec - @as(@Vector(shape_arr.len, usize), @splat(1))) * strides_vec,
+    );
+
     if (dtype_info != .float and dtype_info != .int) {
         @compileError("Only floats and integers are valid tensor dtypes");
     }
     return struct {
-        comptime shape: @Vector(_shape.len, usize) = shape_vec,
+        comptime shape: @Vector(_shape.len, usize) = _shape,
         comptime strides: @Vector(_shape.len, usize) = _strides,
-        comptime n_scalars: usize = total_num_scalars,
+        comptime num_scalars: usize = total_num_scalars,
 
         data: []dtype,
 
         pub fn init(data: []dtype) @This() {
             return .{
-                .data = data[0..total_num_scalars],
+                .data = data[0 .. highest_idx + 1],
             };
         }
         pub fn randomize(self: *@This(), random: std.Random) void {
             random.bytes(std.mem.asBytes(&self.data));
         }
 
-        pub inline fn scalar_mut(self: *@This(), idxs: @Vector(_shape.len, usize)) *dtype {
-            const idx = @reduce(.Add, self.strides * idxs);
-            return &self.data[idx];
-        }
-
         pub inline fn scalar(self: *@This(), idxs: @Vector(_shape.len, usize)) dtype {
-            return self.scalar_mut(idxs).*;
+            const idx = @reduce(.Add, self.strides * idxs);
+            return self.data[idx];
         }
 
-        fn GetSubTensorViewResult(comptime size: usize) type {
+        fn GetResult(comptime size: usize) type {
             if (comptime _shape.len - size == 0) {
-                return *dtype;
+                return dtype;
             }
             return InnerTensorView(
                 dtype,
@@ -55,23 +56,20 @@ fn InnerTensorView(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         /// get a subtensor. `idxs` needs to be an array.
-        pub inline fn get(self: *@This(), idxs: anytype) GetSubTensorViewResult(idxs.len) {
+        pub inline fn get(self: *@This(), idxs: anytype) GetResult(idxs.len) {
             if (comptime idxs.len == 0) {
                 @compileError("index sequence must have a positive non-zero length");
             }
             if (comptime _shape.len - idxs.len == 0) {
-                return self.scalar_mut(idxs);
+                return self.scalar(idxs);
             }
-            const to_sub_tensor_mask = comptime createSequence(usize, idxs.len);
-            const strides_to_sub_tensor = comptime @shuffle(
-                usize,
-                self.strides,
-                undefined,
-                to_sub_tensor_mask,
-            );
-            const start_idx = @reduce(.Add, strides_to_sub_tensor * asVector(usize, idxs));
+            if (comptime !stridesAreContiguous()) {
+                @compileError("Can't get a tensor without contiguous strides");
+            }
+            const strides_to_sub_tensor = comptime asSubVector(usize, self.strides, 0, idxs.len - 1);
+            const start_idx = getIndexAt(idxs, _strides);
             const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
-            return GetSubTensorViewResult(idxs.len).init(self.data[start_idx..final_idx]);
+            return GetResult(idxs.len).init(self.data[start_idx..final_idx]);
         }
 
         fn stridesAreContiguous() bool {
@@ -84,10 +82,41 @@ fn InnerTensorView(comptime dtype: type, comptime _shape: anytype, comptime _str
                 @compileError("Can't reshape a tensor without contiguous strides");
             }
             const result = TensorView(dtype, shape).init(self.data);
-            if (comptime result.n_scalars != self.n_scalars) {
+            if (comptime result.num_scalars != self.num_scalars) {
                 @compileError("Invalid reshape size (the final number of scalars don't match the current tensor)");
             }
             return result;
+        }
+
+        fn SliceResult(comptime ranges: anytype) type {
+            var new_shape: [ranges.len]usize = undefined;
+            for (0..ranges.len) |i| {
+                new_shape[i] = ranges[i][1] - ranges[i][0];
+            }
+            var new_strides: [ranges.len]usize = undefined;
+            for (0..ranges.len) |i| {
+                new_strides[i] = strides_arr[i];
+            }
+            return InnerTensorView(dtype, new_shape, new_strides);
+        }
+
+        pub inline fn slice(self: *@This(), comptime ranges: anytype) SliceResult(ranges) {
+            if (comptime !stridesAreContiguous()) {
+                @compileError("Can't slice a tensor without contiguous strides");
+            }
+            const start_idx, const final_idx = comptime idxs: {
+                var low_ranges_arr: [ranges.len]usize = undefined;
+                var high_ranges_arr: [ranges.len]usize = undefined;
+                for (0..ranges.len) |i| {
+                    low_ranges_arr[i] = ranges[i][0];
+                    high_ranges_arr[i] = ranges[i][1] - 1;
+                }
+                break :idxs .{
+                    getIndexAt(low_ranges_arr, strides_arr),
+                    getIndexAt(high_ranges_arr, strides_arr),
+                };
+            };
+            return SliceResult(ranges).init(self.data[start_idx .. final_idx + 1]);
         }
     };
 }
@@ -124,12 +153,29 @@ fn asArray(comptime T: type, tuple: anytype) [GetTypeLength(@TypeOf(tuple))]T {
 }
 
 fn asSubArray(comptime T: type, arr: anytype, start_idx: usize, end_idx: usize) [end_idx - start_idx + 1]T {
-    const size = comptime end_idx - start_idx + 1;
+    const size = end_idx - start_idx + 1;
     var result: [size]T = undefined;
     for (0..size) |i| {
         result[i] = arr[start_idx + i];
     }
     return result;
+}
+
+fn asSubVector(comptime T: type, arr: anytype, start_idx: usize, end_idx: usize) @Vector(end_idx - start_idx + 1, T) {
+    const size = end_idx - start_idx + 1;
+    const seq_vec: @Vector(size, T) = createSequence(T, size);
+    const mask = seq_vec + @as(@Vector(size, T), @splat(start_idx));
+    return @shuffle(
+        usize,
+        arr,
+        undefined,
+        mask,
+    );
+}
+
+fn getIndexAt(comptime idxs: anytype, comptime strides: anytype) usize {
+    const strides_to = comptime asSubVector(usize, strides, 0, idxs.len - 1);
+    return @reduce(.Add, strides_to * asVector(usize, idxs));
 }
 
 fn asVector(comptime T: type, seq: anytype) @Vector(GetTypeLength(@TypeOf(seq)), T) {
