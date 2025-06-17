@@ -1,7 +1,16 @@
 const std = @import("std");
 const expectEqual = std.testing.expectEqual;
+const expect = std.testing.expect;
 const TensorView = @import("tensor").TensorView;
-const createSequence = @import("tensor").createSequence;
+const Tensor = @import("tensor").Tensor;
+
+fn createSequence(comptime dtype: type, comptime n: usize) [n]dtype {
+    var seq: [n]dtype = .{1} ** n;
+    inline for (0..n) |i| {
+        seq[i] = i;
+    }
+    return seq;
+}
 
 test {
     std.testing.refAllDeclsRecursive(@This());
@@ -41,6 +50,52 @@ const TENSOR_1D = struct {
         var subtensor = tensor.slice(.{.{ 1, 3 }});
         try expectEqual(data[1], subtensor.get(.{0}));
         try expectEqual(data[2], subtensor.get(.{1}));
+    }
+    test "get tensor from view" {
+        var data: [3]f64 = createSequence(f64, 3);
+        var view = TensorView(f64, .{3}).init(data[0..]);
+        var tensor = view.mut();
+        try expectEqual(&tensor.data[0], tensor.get(.{0}));
+        try expectEqual(&tensor.data[1], tensor.get(.{1}));
+        try expectEqual(&tensor.data[2], tensor.get(.{2}));
+
+        try expectEqual(tensor.data[0], tensor.get(.{0}).*);
+        try expectEqual(tensor.data[1], tensor.get(.{1}).*);
+        try expectEqual(tensor.data[2], tensor.get(.{2}).*);
+    }
+    test "get view from tensor from view" {
+        var data: [3]f64 = createSequence(f64, 3);
+        var view_tmp = TensorView(f64, .{3}).init(data[0..]);
+        var tensor_tmp = view_tmp.mut();
+        var view = tensor_tmp.view();
+        try expectEqual(view.data[0], view.get(.{0}));
+        try expectEqual(view.data[1], view.get(.{1}));
+        try expectEqual(view.data[2], view.get(.{2}));
+    }
+    test "element wise operation with a scalar" {
+        var data: [3]f64 = createSequence(f64, 3);
+        var tensor1 = Tensor(f64, .{3}).init(data[0..]);
+        _ = tensor1.wise(2, (struct {
+            pub fn func(a: f64, b: f64) f64 {
+                return a + b;
+            }
+        }).func);
+        try expectEqual(2, tensor1.get(.{0}).*);
+        try expectEqual(3, tensor1.get(.{1}).*);
+        try expectEqual(4, tensor1.get(.{2}).*);
+    }
+    test "element wise operation with a tensor" {
+        var data: [3]f64 = createSequence(f64, 3);
+        var tensor1 = Tensor(f64, .{3}).init(data[0..]);
+        var tensor2 = Tensor(f64, .{3}).init(data[0..]);
+        _ = tensor1.wise(&tensor2, (struct {
+            pub fn func(a: f64, b: f64) f64 {
+                return a + b;
+            }
+        }).func);
+        try expectEqual(0, tensor1.get(.{0}).*);
+        try expectEqual(2, tensor1.get(.{1}).*);
+        try expectEqual(4, tensor1.get(.{2}).*);
     }
 };
 
