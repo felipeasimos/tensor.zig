@@ -5,21 +5,10 @@ const TensorView = @import("tensor_view.zig").TensorView;
 /// read-only tensor view can be accessed with the `view()` method
 pub fn OwnedTensor(comptime dtype: type, comptime _shape: anytype) type {
     @setEvalBranchQuota(100000);
-    return InnerTensor(dtype, _shape, .{ .cpu = .in_place });
+    return InnerTensor(dtype, _shape);
 }
 
-pub const OpConfig = union(enum) {
-    cpu: enum {
-        in_place,
-        write_to,
-        new,
-    },
-    gpu: enum {
-        in_place,
-    },
-};
-
-fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _op_config: OpConfig) type {
+fn InnerTensor(comptime dtype: type, comptime _shape: anytype) type {
     const dtype_info = @typeInfo(dtype);
 
     const shape_arr = asArray(usize, _shape);
@@ -37,7 +26,6 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _op_conf
         comptime shape: @Vector(_shape.len, usize) = _shape,
         comptime strides: @Vector(_shape.len, usize) = strides_vec,
         comptime num_scalars: usize = total_num_scalars,
-        comptime op_config: OpConfig = _op_config,
 
         data: [total_num_scalars]dtype,
 
@@ -97,43 +85,22 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _op_conf
             return result;
         }
 
-        fn resultTensor(self: *@This(), other: anytype) *@This() {
-            return switch (comptime self.op_config) {
-                .cpu => |cpu_config| switch (comptime cpu_config) {
-                    .in_place => self,
-                    .write_to => other,
-                    .new => @This(){ .data = undefined },
-                },
-                .gpu => |gpu_config| switch (comptime gpu_config) {
-                    .in_place => self,
-                },
-            };
-        }
-
         fn otherValue(other: anytype, comptime i: usize) dtype {
             const T = @TypeOf(other);
             switch (@typeInfo(T)) {
                 .comptime_int, .comptime_float, .int, .float => return other,
-                .pointer => |p| if (p.child == @This()) {
-                    return other.data[i];
-                },
-                .@"struct" => return other.data[i],
+                .pointer, .@"struct" => return other.data[i],
                 inline else => {},
             }
             @compileError(std.fmt.comptimePrint("Invalid operand type {} for {}", .{ T, @This() }));
         }
 
         pub inline fn wise(self: *@This(), other: anytype, func: fn (dtype, dtype) dtype) *@This() {
-            const result_tensor = self.resultTensor(other);
             inline for (0..self.data.len) |i| {
                 const other_value = otherValue(other, i);
-                result_tensor.data[i] = func(self.data[i], other_value);
+                self.data[i] = func(self.data[i], other_value);
             }
-            return result_tensor;
-        }
-
-        pub inline fn opConfig(self: *@This(), new_op_config: OpConfig) InnerTensor(dtype, shape_arr, strides_arr, new_op_config) {
-            return InnerTensor(dtype, shape_arr, strides_arr, new_op_config).init(self.data);
+            return self;
         }
     };
 }

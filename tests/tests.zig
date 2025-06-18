@@ -84,7 +84,7 @@ const TENSOR_1D = struct {
         try expectEqual(3, tensor1.get(.{1}).*);
         try expectEqual(4, tensor1.get(.{2}).*);
     }
-    test "element wise operation with a tensor" {
+    test "element wise operation with a tensor, in_place" {
         var data: [3]f64 = createSequence(f64, 3);
         var tensor1 = Tensor(f64, .{3}).init(data[0..]);
         var tensor2 = Tensor(f64, .{3}).init(data[0..]);
@@ -96,6 +96,10 @@ const TENSOR_1D = struct {
         try expectEqual(0, tensor1.get(.{0}).*);
         try expectEqual(2, tensor1.get(.{1}).*);
         try expectEqual(4, tensor1.get(.{2}).*);
+
+        try expectEqual(0, tensor2.get(.{0}).*);
+        try expectEqual(1, tensor2.get(.{1}).*);
+        try expectEqual(2, tensor2.get(.{2}).*);
     }
 };
 
