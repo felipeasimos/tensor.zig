@@ -74,20 +74,28 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
         }
 
         fn CloneResult(comptime size: usize) type {
-            const RefType = RefResult(size);
-            if (RefType == *dtype) return dtype;
-            const obj = RefType{ .data = undefined };
-            return InnerTensor(dtype, obj.shape, false);
+            if (comptime _shape.len - size == 0) {
+                return dtype;
+            }
+            return InnerTensor(
+                dtype,
+                comptime asSubArray(usize, shape_arr, size, shape_arr.len - 1),
+                false,
+            );
         }
 
         /// get a subtensor. `idxs` needs to be an array.
-        pub inline fn clone(self: *@This(), idxs: anytype) CloneResult(idxs.len) {
-            const ref_result = self.ref(idxs);
-            if (comptime @TypeOf(ref_result) == *dtype) {
-                return ref_result.*;
+        pub inline fn clone(self: *const @This(), idxs: anytype) CloneResult(idxs.len) {
+            if (comptime idxs.len == 0) {
+                return RefResult(0).init(self.data[0..]);
             }
-            const data_slice = self.ref(idxs).data;
-            return CloneResult(idxs.len).init(data_slice);
+            if (comptime _shape.len - idxs.len == 0) {
+                return self.data[getIndexAt(idxs, self.strides)];
+            }
+            const strides_to_sub_tensor = comptime asSubVector(usize, self.strides, 0, idxs.len - 1);
+            const start_idx = getIndexAt(idxs, self.strides);
+            const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
+            return RefResult(idxs.len).init(self.data[start_idx..final_idx]);
         }
 
         fn stridesAreContiguous() bool {
@@ -95,7 +103,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
             return std.mem.eql(usize, &strides_arr, &contiguous_strides);
         }
 
-        pub inline fn reshape(self: *@This(), comptime shape: anytype) InnerTensor(dtype, shape, is_ref) {
+        pub inline fn reshape(self: *const @This(), comptime shape: anytype) InnerTensor(dtype, shape, is_ref) {
             if (comptime !stridesAreContiguous()) {
                 @compileError("Can't reshape a tensor without contiguous strides");
             }
@@ -124,7 +132,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
             return self;
         }
 
-        pub inline fn matmul(self: *@This(), other: anytype, result: anytype) void {
+        pub inline fn matmul(self: *const @This(), other: anytype, result: anytype) void {
             // (P, Q) x (Q, R) -> (P, R)
             const P = comptime shape_arr[0];
             const Q = comptime shape_arr[1];
@@ -164,7 +172,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
             return InnerTensor(dtype, .{ P, R }, false);
         }
 
-        pub inline fn matmulNew(self: *@This(), other: anytype) MatMulNewResult(other.shape) {
+        pub inline fn matmulNew(self: *const @This(), other: anytype) MatMulNewResult(other.shape) {
             var result = MatMulNewResult(other.shape){ .data = undefined };
             self.matmul(other, &result);
             return result;

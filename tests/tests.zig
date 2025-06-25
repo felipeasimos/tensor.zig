@@ -399,10 +399,10 @@ const TENSOR_3D = struct {
         var ref_to_2 = subtensor2.ref(.{});
         try expectEqual(.{ 4, 2 }, ref_to_2.shape);
         try expectEqual(8, ref_to_2.num_scalars);
-        var reshaped_ref_to_2 = ref_to_2.reshape(.{ 2, 4 });
+        const reshaped_ref_to_2 = ref_to_2.reshape(.{ 2, 4 });
         try expectEqual(.{ 2, 4 }, reshaped_ref_to_2.shape);
         try expectEqual(8, reshaped_ref_to_2.num_scalars);
-        const result = subtensor1.matmulNew(&reshaped_ref_to_2);
+        const result = subtensor1.matmulNew(subtensor2.ref(.{}).reshape(.{ 2, 4 }));
 
         try expectEqual(.{ 4, 4 }, result.shape);
     }

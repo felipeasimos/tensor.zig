@@ -39,7 +39,7 @@ fn InnerTensorView(comptime dtype: type, comptime _shape: anytype, comptime _str
             };
         }
 
-        pub inline fn scalar(self: *@This(), idxs: @Vector(_shape.len, usize)) dtype {
+        pub inline fn scalar(self: *const @This(), idxs: @Vector(_shape.len, usize)) dtype {
             const idx = @reduce(.Add, self.strides * idxs);
             return self.data[idx];
         }
@@ -56,7 +56,7 @@ fn InnerTensorView(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         /// get a subtensor. `idxs` needs to be an array.
-        pub inline fn get(self: *@This(), idxs: anytype) GetResult(idxs.len) {
+        pub inline fn get(self: *const @This(), idxs: anytype) GetResult(idxs.len) {
             if (comptime idxs.len == 0) {
                 @compileError("index sequence must have a positive non-zero length");
             }
@@ -77,7 +77,7 @@ fn InnerTensorView(comptime dtype: type, comptime _shape: anytype, comptime _str
             return std.mem.eql(usize, &strides_arr, &contiguous_strides);
         }
 
-        pub inline fn reshape(self: *@This(), comptime shape: anytype) TensorView(dtype, shape) {
+        pub inline fn reshape(self: *const @This(), comptime shape: anytype) TensorView(dtype, shape) {
             if (comptime !stridesAreContiguous()) {
                 @compileError("Can't reshape a tensor without contiguous strides");
             }
@@ -109,7 +109,7 @@ fn InnerTensorView(comptime dtype: type, comptime _shape: anytype, comptime _str
             return true;
         }
 
-        pub inline fn slice(self: *@This(), comptime ranges: anytype) SliceResult(ranges) {
+        pub inline fn slice(self: *const @This(), comptime ranges: anytype) SliceResult(ranges) {
             if (comptime !validateRanges(ranges)) {
                 @compileError("Invalid slicing ranges");
             }
@@ -131,7 +131,7 @@ fn InnerTensorView(comptime dtype: type, comptime _shape: anytype, comptime _str
             return SliceResult(ranges).init(self.data[start_idx .. final_idx + 1]);
         }
 
-        pub inline fn mut(self: *@This()) OwnedTensor(dtype, shape_arr) {
+        pub inline fn mut(self: *const @This()) OwnedTensor(dtype, shape_arr) {
             return OwnedTensor(dtype, shape_arr).init(self.data);
         }
     };
