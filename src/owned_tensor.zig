@@ -5,10 +5,10 @@ const TensorView = @import("tensor_view.zig").TensorView;
 /// read-only tensor view can be accessed with the `view()` method
 pub fn OwnedTensor(comptime dtype: type, comptime _shape: anytype) type {
     @setEvalBranchQuota(100000);
-    return InnerTensor(dtype, _shape);
+    return InnerTensor(dtype, _shape, false);
 }
 
-fn InnerTensor(comptime dtype: type, comptime _shape: anytype) type {
+fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: bool) type {
     const dtype_info = @typeInfo(dtype);
 
     const shape_arr = asArray(usize, _shape);
@@ -18,6 +18,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype) type {
     const strides_arr = strides_vec;
 
     const total_num_scalars = @reduce(.Mul, shape_vec);
+    const DataSequenceType = if (is_ref) []dtype else [total_num_scalars]dtype;
 
     if (dtype_info != .float and dtype_info != .int) {
         @compileError("Only floats and integers are valid tensor dtypes");
@@ -27,9 +28,12 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype) type {
         comptime strides: @Vector(_shape.len, usize) = strides_vec,
         comptime num_scalars: usize = total_num_scalars,
 
-        data: [total_num_scalars]dtype,
+        data: DataSequenceType,
 
         pub fn init(data: []dtype) @This() {
+            if (comptime is_ref) {
+                return .{ .data = data };
+            }
             var new: @This() = .{ .data = undefined };
             std.mem.copyForwards(dtype, &new.data, data);
             return new;
@@ -44,19 +48,19 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype) type {
             return &self.data[idx];
         }
 
-        fn GetResult(comptime size: usize) type {
+        fn RefResult(comptime size: usize) type {
             if (comptime _shape.len - size == 0) {
                 return *dtype;
             }
             return InnerTensor(
                 dtype,
                 comptime asSubArray(usize, shape_arr, size, shape_arr.len - 1),
-                comptime asSubArray(usize, strides_arr, size, strides_arr.len - 1),
+                true,
             );
         }
 
-        /// get a subtensor. `idxs` needs to be an array.
-        pub inline fn get(self: *@This(), idxs: anytype) GetResult(idxs.len) {
+        /// get a mutable view
+        pub inline fn ref(self: *@This(), idxs: anytype) RefResult(idxs.len) {
             if (comptime idxs.len == 0) {
                 @compileError("index sequence must have a positive non-zero length");
             }
@@ -66,7 +70,24 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype) type {
             const strides_to_sub_tensor = comptime asSubVector(usize, self.strides, 0, idxs.len - 1);
             const start_idx = getIndexAt(idxs, self.strides);
             const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
-            return GetResult(idxs.len).init(self.data[start_idx..final_idx]);
+            return RefResult(idxs.len).init(self.data[start_idx..final_idx]);
+        }
+
+        fn CloneResult(comptime size: usize) type {
+            const RefType = RefResult(size);
+            if (RefType == *dtype) return dtype;
+            const obj = RefType{ .data = undefined };
+            return InnerTensor(dtype, obj.shape, false);
+        }
+
+        /// get a subtensor. `idxs` needs to be an array.
+        pub inline fn clone(self: *@This(), idxs: anytype) CloneResult(idxs.len) {
+            const ref_result = self.ref(idxs);
+            if (comptime @TypeOf(ref_result) == *dtype) {
+                return ref_result.*;
+            }
+            const data_slice = self.ref(idxs).data;
+            return CloneResult(idxs.len).init(data_slice);
         }
 
         fn stridesAreContiguous() bool {
@@ -119,15 +140,14 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype) type {
                 @compileError("Number of columns don't match with number of rows");
             }
 
-            return InnerTensor(dtype, .{ P, R });
+            return InnerTensor(dtype, .{ P, R }, is_ref);
         }
 
-        pub inline fn matmul(self: *@This(), other: anytype) MatMulResult(other.shape) {
+        pub inline fn matmul(self: *@This(), other: anytype, result: anytype) void {
             // (P, Q) x (Q, R) -> (P, R)
             const P = shape_arr[0];
             const Q = shape_arr[1];
             const R = other.shape[1];
-            var result = MatMulResult(other.shape){ .data = undefined };
             for (0..P) |i| {
                 for (0..R) |j| {
                     var tmp: dtype = 0;
@@ -140,6 +160,11 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype) type {
                     result.data[index_result] = tmp;
                 }
             }
+        }
+
+        pub inline fn matmulNew(self: *@This(), other: anytype) MatMulResult(other.shape) {
+            var result = MatMulResult(other.shape){ .data = undefined };
+            self.matmul(other, &result);
             return result;
         }
     };

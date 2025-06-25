@@ -55,13 +55,13 @@ const TENSOR_1D = struct {
         var data: [3]f64 = createSequence(f64, 3);
         var view = TensorView(f64, .{3}).init(data[0..]);
         var tensor = view.mut();
-        try expectEqual(&tensor.data[0], tensor.get(.{0}));
-        try expectEqual(&tensor.data[1], tensor.get(.{1}));
-        try expectEqual(&tensor.data[2], tensor.get(.{2}));
+        try expectEqual(tensor.data[0], tensor.clone(.{0}));
+        try expectEqual(tensor.data[1], tensor.clone(.{1}));
+        try expectEqual(tensor.data[2], tensor.clone(.{2}));
 
-        try expectEqual(tensor.data[0], tensor.get(.{0}).*);
-        try expectEqual(tensor.data[1], tensor.get(.{1}).*);
-        try expectEqual(tensor.data[2], tensor.get(.{2}).*);
+        try expectEqual(tensor.data[0], tensor.clone(.{0}));
+        try expectEqual(tensor.data[1], tensor.clone(.{1}));
+        try expectEqual(tensor.data[2], tensor.clone(.{2}));
     }
     test "get view from tensor from view" {
         var data: [3]f64 = createSequence(f64, 3);
@@ -80,9 +80,9 @@ const TENSOR_1D = struct {
                 return a + b;
             }
         }).func);
-        try expectEqual(2, tensor1.get(.{0}).*);
-        try expectEqual(3, tensor1.get(.{1}).*);
-        try expectEqual(4, tensor1.get(.{2}).*);
+        try expectEqual(2, tensor1.clone(.{0}));
+        try expectEqual(3, tensor1.clone(.{1}));
+        try expectEqual(4, tensor1.clone(.{2}));
     }
     test "element wise operation with a tensor, in_place" {
         var data: [3]f64 = createSequence(f64, 3);
@@ -93,13 +93,13 @@ const TENSOR_1D = struct {
                 return a + b;
             }
         }).func);
-        try expectEqual(0, tensor1.get(.{0}).*);
-        try expectEqual(2, tensor1.get(.{1}).*);
-        try expectEqual(4, tensor1.get(.{2}).*);
+        try expectEqual(0, tensor1.clone(.{0}));
+        try expectEqual(2, tensor1.clone(.{1}));
+        try expectEqual(4, tensor1.clone(.{2}));
 
-        try expectEqual(0, tensor2.get(.{0}).*);
-        try expectEqual(1, tensor2.get(.{1}).*);
-        try expectEqual(2, tensor2.get(.{2}).*);
+        try expectEqual(0, tensor2.clone(.{0}));
+        try expectEqual(1, tensor2.clone(.{1}));
+        try expectEqual(2, tensor2.clone(.{2}));
     }
 };
 
@@ -181,7 +181,19 @@ const TENSOR_2D = struct {
         var data2: [8]f64 = createSequence(f64, 8);
         var tensor2 = Tensor(f64, .{ 4, 2 }).init(&data2);
 
-        _ = tensor1.matmul(&tensor2);
+        var data3: [6]f64 = createSequence(f64, 6);
+        var result = Tensor(f64, .{ 3, 2 }).init(&data3);
+        tensor1.matmul(&tensor2, &result);
+        try expectEqual(result.shape, [_]usize{ 3, 2 });
+    }
+    test "matmulNew 3x4 4x2" {
+        var data1: [12]f64 = createSequence(f64, 12);
+        var tensor1 = Tensor(f64, .{ 3, 4 }).init(&data1);
+        var data2: [8]f64 = createSequence(f64, 8);
+        var tensor2 = Tensor(f64, .{ 4, 2 }).init(&data2);
+
+        const result = tensor1.matmulNew(&tensor2);
+        try expectEqual(result.shape, [_]usize{ 3, 2 });
     }
 };
 
@@ -320,5 +332,57 @@ const TENSOR_3D = struct {
 
         try expectEqual(data[22], subtensor.get(.{ 1, 1, 0 }));
         try expectEqual(data[23], subtensor.get(.{ 1, 1, 1 }));
+    }
+    test "get reference to matrix" {
+        var data: [24]f64 = createSequence(f64, 24);
+        var tensor = Tensor(f64, .{ 3, 4, 2 }).init(data[0..]);
+
+        var subtensor1 = tensor.ref(.{0});
+
+        try expectEqual(.{ 4, 2 }, subtensor1.shape);
+
+        try expectEqual(data[0], subtensor1.scalar(.{ 0, 0 }).*);
+        try expectEqual(data[1], subtensor1.scalar(.{ 0, 1 }).*);
+
+        try expectEqual(data[2], subtensor1.scalar(.{ 1, 0 }).*);
+        try expectEqual(data[3], subtensor1.scalar(.{ 1, 1 }).*);
+
+        try expectEqual(data[4], subtensor1.scalar(.{ 2, 0 }).*);
+        try expectEqual(data[5], subtensor1.scalar(.{ 2, 1 }).*);
+
+        try expectEqual(data[6], subtensor1.scalar(.{ 3, 0 }).*);
+        try expectEqual(data[7], subtensor1.scalar(.{ 3, 1 }).*);
+
+        var subtensor2 = tensor.ref(.{1});
+
+        try expectEqual(.{ 4, 2 }, subtensor2.shape);
+
+        try expectEqual(data[8], subtensor2.scalar(.{ 0, 0 }).*);
+        try expectEqual(data[9], subtensor2.scalar(.{ 0, 1 }).*);
+
+        try expectEqual(data[10], subtensor2.scalar(.{ 1, 0 }).*);
+        try expectEqual(data[11], subtensor2.scalar(.{ 1, 1 }).*);
+
+        try expectEqual(data[12], subtensor2.scalar(.{ 2, 0 }).*);
+        try expectEqual(data[13], subtensor2.scalar(.{ 2, 1 }).*);
+
+        try expectEqual(data[14], subtensor2.scalar(.{ 3, 0 }).*);
+        try expectEqual(data[15], subtensor2.scalar(.{ 3, 1 }).*);
+
+        var subtensor3 = tensor.ref(.{2});
+
+        try expectEqual(.{ 4, 2 }, subtensor3.shape);
+
+        try expectEqual(data[16], subtensor3.scalar(.{ 0, 0 }).*);
+        try expectEqual(data[17], subtensor3.scalar(.{ 0, 1 }).*);
+
+        try expectEqual(data[18], subtensor3.scalar(.{ 1, 0 }).*);
+        try expectEqual(data[19], subtensor3.scalar(.{ 1, 1 }).*);
+
+        try expectEqual(data[20], subtensor3.scalar(.{ 2, 0 }).*);
+        try expectEqual(data[21], subtensor3.scalar(.{ 2, 1 }).*);
+
+        try expectEqual(data[22], subtensor3.scalar(.{ 3, 0 }).*);
+        try expectEqual(data[23], subtensor3.scalar(.{ 3, 1 }).*);
     }
 };
