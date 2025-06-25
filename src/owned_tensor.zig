@@ -15,7 +15,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
     const shape_vec = asVector(usize, _shape);
 
     const strides_vec = calculateStrides(_shape);
-    const strides_arr = strides_vec;
+    const strides_arr = asArray(usize, strides_vec);
 
     const total_num_scalars = @reduce(.Mul, shape_vec);
     const DataSequenceType = if (is_ref) []dtype else [total_num_scalars]dtype;
@@ -24,7 +24,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
         @compileError("Only floats and integers are valid tensor dtypes");
     }
     return struct {
-        comptime shape: @Vector(_shape.len, usize) = _shape,
+        comptime shape: @Vector(_shape.len, usize) = shape_vec,
         comptime strides: @Vector(_shape.len, usize) = strides_vec,
         comptime num_scalars: usize = total_num_scalars,
 
@@ -62,7 +62,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
         /// get a mutable view
         pub inline fn ref(self: *@This(), idxs: anytype) RefResult(idxs.len) {
             if (comptime idxs.len == 0) {
-                @compileError("index sequence must have a positive non-zero length");
+                return RefResult(0).init(self.data[0..]);
             }
             if (comptime _shape.len - idxs.len == 0) {
                 return self.scalar(idxs);
@@ -95,11 +95,11 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
             return std.mem.eql(usize, &strides_arr, &contiguous_strides);
         }
 
-        pub inline fn reshape(self: *@This(), comptime shape: anytype) OwnedTensor(dtype, shape) {
+        pub inline fn reshape(self: *@This(), comptime shape: anytype) InnerTensor(dtype, shape, is_ref) {
             if (comptime !stridesAreContiguous()) {
                 @compileError("Can't reshape a tensor without contiguous strides");
             }
-            const result = OwnedTensor(dtype, shape).init(self.data);
+            const result = InnerTensor(dtype, shape, is_ref).init(self.data);
             if (comptime result.num_scalars != self.num_scalars) {
                 @compileError("Invalid reshape size (the final number of scalars don't match the current tensor)");
             }
@@ -124,30 +124,14 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
             return self;
         }
 
-        fn MatMulResult(otherShape: @Vector(shape_arr.len, usize)) type {
-            const other_length = GetTypeLength(@TypeOf(otherShape));
-            if (other_length != 2 or shape_arr.len != 2 or other_length != shape_arr.len) {
-                @compileError("Incompatible shape with matmul");
-            }
-            const other_arr: @Vector(shape_arr.len, usize) = @bitCast(otherShape);
-
-            // (P, Q1) x (Q2, R) -> (P, R)
-            const P = shape_arr[shape_arr.len - 2];
-            const Q1 = shape_arr[shape_arr.len - 1];
-            const Q2 = other_arr[shape_arr.len - 2];
-            const R = other_arr[shape_arr.len - 1];
-            if (Q1 != Q2) {
-                @compileError("Number of columns don't match with number of rows");
-            }
-
-            return InnerTensor(dtype, .{ P, R }, is_ref);
-        }
-
         pub inline fn matmul(self: *@This(), other: anytype, result: anytype) void {
             // (P, Q) x (Q, R) -> (P, R)
-            const P = shape_arr[0];
-            const Q = shape_arr[1];
-            const R = other.shape[1];
+            const P = comptime shape_arr[0];
+            const Q = comptime shape_arr[1];
+            const R = comptime other.shape[1];
+            if (comptime (result.shape[0] != P or result.shape[1] != R or other.shape[0] != Q)) {
+                @compileError("Number of columns don't match with number of rows");
+            }
             for (0..P) |i| {
                 for (0..R) |j| {
                     var tmp: dtype = 0;
@@ -162,8 +146,26 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
             }
         }
 
-        pub inline fn matmulNew(self: *@This(), other: anytype) MatMulResult(other.shape) {
-            var result = MatMulResult(other.shape){ .data = undefined };
+        fn MatMulNewResult(other_shape: @Vector(shape_arr.len, usize)) type {
+            const other_length = GetTypeLength(@TypeOf(other_shape));
+            if (other_length != 2 or shape_arr.len != 2) {
+                @compileError("Incompatible shape with matmul");
+            }
+
+            // (P, Q1) x (Q2, R) -> (P, R)
+            const P = shape_arr[0];
+            const Q1 = shape_arr[1];
+            const Q2 = other_shape[0];
+            const R = other_shape[1];
+            if (Q1 != Q2) {
+                @compileError("Number of columns don't match with number of rows");
+            }
+
+            return InnerTensor(dtype, .{ P, R }, false);
+        }
+
+        pub inline fn matmulNew(self: *@This(), other: anytype) MatMulNewResult(other.shape) {
+            var result = MatMulNewResult(other.shape){ .data = undefined };
             self.matmul(other, &result);
             return result;
         }

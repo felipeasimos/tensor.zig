@@ -385,4 +385,25 @@ const TENSOR_3D = struct {
         try expectEqual(data[22], subtensor3.scalar(.{ 3, 0 }).*);
         try expectEqual(data[23], subtensor3.scalar(.{ 3, 1 }).*);
     }
+
+    test "matmul" {
+        var data: [24]f64 = createSequence(f64, 24);
+        var tensor = Tensor(f64, .{ 3, 4, 2 }).init(data[0..]);
+
+        var subtensor1 = tensor.ref(.{0});
+        try expectEqual(.{ 4, 2 }, subtensor1.shape);
+        try expectEqual(8, subtensor1.num_scalars);
+        var subtensor2 = tensor.ref(.{1});
+        try expectEqual(.{ 4, 2 }, subtensor2.shape);
+        try expectEqual(8, subtensor2.num_scalars);
+        var ref_to_2 = subtensor2.ref(.{});
+        try expectEqual(.{ 4, 2 }, ref_to_2.shape);
+        try expectEqual(8, ref_to_2.num_scalars);
+        var reshaped_ref_to_2 = ref_to_2.reshape(.{ 2, 4 });
+        try expectEqual(.{ 2, 4 }, reshaped_ref_to_2.shape);
+        try expectEqual(8, reshaped_ref_to_2.num_scalars);
+        const result = subtensor1.matmulNew(&reshaped_ref_to_2);
+
+        try expectEqual(.{ 4, 4 }, result.shape);
+    }
 };
