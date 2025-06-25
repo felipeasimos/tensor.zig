@@ -175,6 +175,14 @@ const TENSOR_2D = struct {
         try expectEqual(data[9], subtensor.get(.{ 1, 0 }));
         try expectEqual(data[10], subtensor.get(.{ 1, 1 }));
     }
+    test "matmul 3x4 4x2" {
+        var data1: [12]f64 = createSequence(f64, 12);
+        var tensor1 = Tensor(f64, .{ 3, 4 }).init(&data1);
+        var data2: [8]f64 = createSequence(f64, 8);
+        var tensor2 = Tensor(f64, .{ 4, 2 }).init(&data2);
+
+        _ = tensor1.matmul(&tensor2);
+    }
 };
 
 const TENSOR_3D = struct {

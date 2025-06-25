@@ -102,6 +102,46 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype) type {
             }
             return self;
         }
+
+        fn MatMulResult(otherShape: @Vector(shape_arr.len, usize)) type {
+            const other_length = GetTypeLength(@TypeOf(otherShape));
+            if (other_length != 2 or shape_arr.len != 2 or other_length != shape_arr.len) {
+                @compileError("Incompatible shape with matmul");
+            }
+            const other_arr: @Vector(shape_arr.len, usize) = @bitCast(otherShape);
+
+            // (P, Q1) x (Q2, R) -> (P, R)
+            const P = shape_arr[shape_arr.len - 2];
+            const Q1 = shape_arr[shape_arr.len - 1];
+            const Q2 = other_arr[shape_arr.len - 2];
+            const R = other_arr[shape_arr.len - 1];
+            if (Q1 != Q2) {
+                @compileError("Number of columns don't match with number of rows");
+            }
+
+            return InnerTensor(dtype, .{ P, R });
+        }
+
+        pub inline fn matmul(self: *@This(), other: anytype) MatMulResult(other.shape) {
+            // (P, Q) x (Q, R) -> (P, R)
+            const P = shape_arr[0];
+            const Q = shape_arr[1];
+            const R = other.shape[1];
+            var result = MatMulResult(other.shape){ .data = undefined };
+            for (0..P) |i| {
+                for (0..R) |j| {
+                    var tmp: dtype = 0;
+                    for (0..Q) |k| {
+                        const index_self = getIndexAt(.{ i, k }, self.strides);
+                        const index_other = getIndexAt(.{ k, j }, other.strides);
+                        tmp += self.data[index_self] * other.data[index_other];
+                    }
+                    const index_result = getIndexAt(.{ i, j }, result.strides);
+                    result.data[index_result] = tmp;
+                }
+            }
+            return result;
+        }
     };
 }
 
@@ -157,7 +197,7 @@ fn asSubVector(comptime T: type, arr: anytype, start_idx: usize, end_idx: usize)
     );
 }
 
-fn getIndexAt(comptime idxs: anytype, comptime strides: anytype) usize {
+fn getIndexAt(idxs: anytype, comptime strides: anytype) usize {
     const strides_to = comptime asSubVector(usize, strides, 0, idxs.len - 1);
     return @reduce(.Add, strides_to * asVector(usize, idxs));
 }
