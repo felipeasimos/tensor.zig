@@ -14,8 +14,8 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
     const shape_arr = asArray(usize, _shape);
     const shape_vec = asVector(usize, _shape);
 
-    const strides_vec = _strides;
-    const strides_arr = asArray(usize, strides_vec);
+    const strides_arr = asArray(usize, _strides);
+    const strides_vec = asVector(usize, _strides);
 
     const total_num_scalars = @reduce(.Mul, shape_vec);
     const DataSequenceType = if (is_ref) []dtype else [total_num_scalars]dtype;
@@ -78,7 +78,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         }
 
         fn CloneResult(comptime size: usize) type {
-            if (comptime _shape.len - size == 0) {
+            if (comptime shape_arr.len - size == 0) {
                 return dtype;
             }
             return InnerTensor(
@@ -91,9 +91,9 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         /// get a subtensor. `idxs` needs to be an array.
         pub inline fn clone(self: *const @This(), idxs: anytype) CloneResult(idxs.len) {
             if (comptime idxs.len == 0) {
-                return RefResult(0).init(self.data[0..]);
+                return RefResult(0).init(&self.data);
             }
-            if (comptime _shape.len - idxs.len == 0) {
+            if (comptime shape_arr.len - idxs.len == 0) {
                 return self.data[getIndexAt(idxs, self.strides)];
             }
             const strides_to_sub_tensor = comptime asSubVector(usize, self.strides, 0, idxs.len - 1);
@@ -188,15 +188,36 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return result;
         }
 
-        fn TransposeResult() type {
-            if (comptime shape_arr.len != 0) {
-                @compileError("only matrices can be transposed!");
+        fn TransposeResult(comptime shuffled_axises: anytype) type {
+            if (comptime shuffled_axises.len == 0) {
+                var mask = createSequence(usize, strides_arr.len);
+                const tmp = mask[strides_arr.len - 1];
+                mask[strides_arr.len - 1] = mask[strides_arr.len - 2];
+                mask[strides_arr.len - 2] = tmp;
+                return TransposeResult(mask);
             }
-            return InnerTensor(dtype, .{ shape_arr[1], shape_arr[0] }, .{ strides_arr[1], strides_arr[0] }, true);
+            const new_strides = @shuffle(
+                usize,
+                strides_vec,
+                undefined,
+                shuffled_axises,
+            );
+            const new_shape = @shuffle(
+                usize,
+                shape_vec,
+                undefined,
+                shuffled_axises,
+            );
+            return InnerTensor(
+                dtype,
+                new_shape,
+                new_strides,
+                true,
+            );
         }
 
-        pub inline fn transpose(self: *const @This()) TransposeResult() {
-            return TransposeResult().init(self.data);
+        pub inline fn transpose(self: *@This(), comptime shuffled_axises: anytype) TransposeResult(shuffled_axises) {
+            return TransposeResult(.{}).init(&self.data);
         }
     };
 }

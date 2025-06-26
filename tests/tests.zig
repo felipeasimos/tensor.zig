@@ -195,6 +195,28 @@ const TENSOR_2D = struct {
         const result = tensor1.matmulNew(&tensor2);
         try expectEqual(result.shape, [_]usize{ 3, 2 });
     }
+    test "transpose" {
+        var data: [12]f64 = createSequence(f64, 12);
+        var tensor = Tensor(f64, .{ 3, 4 }).init(&data);
+        const transpose = tensor.transpose(.{});
+        try expectEqual(.{ 4, 3 }, transpose.shape);
+
+        try expectEqual(data[0], transpose.clone(.{ 0, 0 }));
+        try expectEqual(data[4], transpose.clone(.{ 0, 1 }));
+        try expectEqual(data[8], transpose.clone(.{ 0, 2 }));
+
+        try expectEqual(data[1], transpose.clone(.{ 1, 0 }));
+        try expectEqual(data[5], transpose.clone(.{ 1, 1 }));
+        try expectEqual(data[9], transpose.clone(.{ 1, 2 }));
+
+        try expectEqual(data[2], transpose.clone(.{ 2, 0 }));
+        try expectEqual(data[6], transpose.clone(.{ 2, 1 }));
+        try expectEqual(data[10], transpose.clone(.{ 2, 2 }));
+
+        try expectEqual(data[3], transpose.clone(.{ 3, 0 }));
+        try expectEqual(data[7], transpose.clone(.{ 3, 1 }));
+        try expectEqual(data[11], transpose.clone(.{ 3, 2 }));
+    }
 };
 
 const TENSOR_3D = struct {
