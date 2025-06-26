@@ -134,6 +134,17 @@ fn InnerTensorView(comptime dtype: type, comptime _shape: anytype, comptime _str
         pub inline fn mut(self: *const @This()) OwnedTensor(dtype, shape_arr) {
             return OwnedTensor(dtype, shape_arr).init(self.data);
         }
+
+        fn TransposeResult() type {
+            if (comptime shape_arr.len != 0) {
+                @compileError("only matrices can be transposed!");
+            }
+            return InnerTensorView(dtype, .{ shape_arr[1], shape_arr[0] }, .{ strides_arr[1], strides_arr[0] });
+        }
+
+        pub inline fn transpose(self: *const @This()) TransposeResult() {
+            return TransposeResult().init(self.data);
+        }
     };
 }
 

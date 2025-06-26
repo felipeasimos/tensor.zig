@@ -5,16 +5,16 @@ const TensorView = @import("tensor_view.zig").TensorView;
 /// read-only tensor view can be accessed with the `view()` method
 pub fn OwnedTensor(comptime dtype: type, comptime _shape: anytype) type {
     @setEvalBranchQuota(100000);
-    return InnerTensor(dtype, _shape, false);
+    return InnerTensor(dtype, _shape, calculateStrides(_shape), false);
 }
 
-fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: bool) type {
+fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides: anytype, comptime is_ref: bool) type {
     const dtype_info = @typeInfo(dtype);
 
     const shape_arr = asArray(usize, _shape);
     const shape_vec = asVector(usize, _shape);
 
-    const strides_vec = calculateStrides(_shape);
+    const strides_vec = _strides;
     const strides_arr = asArray(usize, strides_vec);
 
     const total_num_scalars = @reduce(.Mul, shape_vec);
@@ -24,9 +24,10 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
         @compileError("Only floats and integers are valid tensor dtypes");
     }
     return struct {
-        comptime shape: @Vector(_shape.len, usize) = shape_vec,
-        comptime strides: @Vector(_shape.len, usize) = strides_vec,
+        comptime shape: @Vector(shape_arr.len, usize) = shape_vec,
+        comptime strides: @Vector(strides_arr.len, usize) = strides_vec,
         comptime num_scalars: usize = total_num_scalars,
+        comptime is_reference: bool = is_ref,
 
         data: DataSequenceType,
 
@@ -52,9 +53,12 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
             if (comptime _shape.len - size == 0) {
                 return *dtype;
             }
+            const new_shape = comptime asSubArray(usize, shape_arr, size, shape_arr.len - 1);
+            const new_strides = comptime calculateStrides(new_shape);
             return InnerTensor(
                 dtype,
-                comptime asSubArray(usize, shape_arr, size, shape_arr.len - 1),
+                new_shape,
+                new_strides,
                 true,
             );
         }
@@ -103,11 +107,15 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
             return std.mem.eql(usize, &strides_arr, &contiguous_strides);
         }
 
-        pub inline fn reshape(self: *const @This(), comptime shape: anytype) InnerTensor(dtype, shape, is_ref) {
+        fn ReshapeResult(comptime shape: anytype) type {
+            return InnerTensor(dtype, shape, calculateStrides(shape), is_ref);
+        }
+
+        pub inline fn reshape(self: *const @This(), comptime shape: anytype) ReshapeResult(shape) {
             if (comptime !stridesAreContiguous()) {
                 @compileError("Can't reshape a tensor without contiguous strides");
             }
-            const result = InnerTensor(dtype, shape, is_ref).init(self.data);
+            const result = ReshapeResult(shape).init(self.data);
             if (comptime result.num_scalars != self.num_scalars) {
                 @compileError("Invalid reshape size (the final number of scalars don't match the current tensor)");
             }
@@ -169,13 +177,26 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime is_ref: 
                 @compileError("Number of columns don't match with number of rows");
             }
 
-            return InnerTensor(dtype, .{ P, R }, false);
+            const new_shape = comptime .{ P, R };
+            const new_strides = calculateStrides(new_shape);
+            return InnerTensor(dtype, new_shape, new_strides, false);
         }
 
         pub inline fn matmulNew(self: *const @This(), other: anytype) MatMulNewResult(other.shape) {
             var result = MatMulNewResult(other.shape){ .data = undefined };
             self.matmul(other, &result);
             return result;
+        }
+
+        fn TransposeResult() type {
+            if (comptime shape_arr.len != 0) {
+                @compileError("only matrices can be transposed!");
+            }
+            return InnerTensor(dtype, .{ shape_arr[1], shape_arr[0] }, .{ strides_arr[1], strides_arr[0] }, true);
+        }
+
+        pub inline fn transpose(self: *const @This()) TransposeResult() {
+            return TransposeResult().init(self.data);
         }
     };
 }
