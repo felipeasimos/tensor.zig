@@ -3,14 +3,14 @@ const std = @import("std");
 /// OwnedTensor owns the underlying tensor data and can make changes to it
 /// read-only tensor view can be accessed with the `view()` method
 pub fn Tensor(comptime dtype: type, comptime _shape: anytype) type {
-    @setEvalBranchQuota(100000);
+    @setEvalBranchQuota(10000);
     return InnerTensor(dtype, _shape, calculateStrides(_shape), false, false);
 }
 
 /// TensorView is a compile-time type that represents a view into a tensor.
 /// Never writes to the underlying data
 pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
-    @setEvalBranchQuota(100000);
+    @setEvalBranchQuota(10000);
     return InnerTensor(dtype, _shape, calculateStrides(_shape), true, true);
 }
 
@@ -22,10 +22,10 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
     }
 
     const shape_arr = asArray(usize, _shape);
-    const shape_vec = asVector(usize, _shape);
+    const shape_vec: @Vector(shape_arr.len, usize) = shape_arr;
 
     const strides_arr = asArray(usize, _strides);
-    const strides_vec = asVector(usize, _strides);
+    const strides_vec: @Vector(strides_arr.len, usize) = strides_arr;
 
     const _is_view = (is_ref and readonly);
 
@@ -129,7 +129,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         /// get a subtensor. `idxs` needs to be an array.
         pub inline fn clone(self: *const @This(), idxs: anytype) CloneResult(idxs.len) {
             if (comptime idxs.len == 0) {
-                return MutResult(0).init(&self.data);
+                return CloneResult(0).init(&self.data);
             }
             if (comptime shape_arr.len - idxs.len == 0) {
                 return self.data[getIndexAt(idxs, self.strides)];
@@ -137,7 +137,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             const strides_to_sub_tensor = comptime asSubVector(usize, self.strides, 0, idxs.len - 1);
             const start_idx = getIndexAt(idxs, self.strides);
             const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
-            return MutResult(idxs.len).init(self.data[start_idx..final_idx]);
+            return CloneResult(idxs.len).init(self.data[start_idx..final_idx]);
         }
 
         fn stridesAreContiguous() bool {
@@ -327,12 +327,6 @@ fn GetTypeLength(comptime T: type) usize {
     return if (comptime @hasField(@TypeOf(type_info_data), "len")) type_info_data.len else std.meta.fields(T).len;
 }
 
-fn GetChildType(comptime T: type) type {
-    const type_info = @typeInfo(T);
-    const type_info_data = @field(type_info, @tagName(std.meta.activeTag(type_info)));
-    return if (comptime @hasDecl(@TypeOf(type_info_data), "child")) type_info_data.child else @FieldType(T, "0");
-}
-
 fn asArray(comptime T: type, tuple: anytype) [GetTypeLength(@TypeOf(tuple))]T {
     if (@typeInfo(T) == .array) return T;
     const field_count = comptime GetTypeLength(@TypeOf(tuple));
@@ -367,11 +361,8 @@ fn asSubVector(comptime T: type, arr: anytype, start_idx: usize, end_idx: usize)
 
 fn getIndexAt(idxs: anytype, comptime strides: anytype) usize {
     const strides_to = comptime asSubVector(usize, strides, 0, idxs.len - 1);
-    return @reduce(.Add, strides_to * asVector(usize, idxs));
-}
-
-fn asVector(comptime T: type, seq: anytype) @Vector(GetTypeLength(@TypeOf(seq)), T) {
-    return @bitCast(asArray(T, seq));
+    const idxs_vec: @Vector(idxs.len, usize) = @bitCast(asArray(usize, idxs));
+    return @reduce(.Add, strides_to * idxs_vec);
 }
 
 fn calculateStrides(comptime shape: anytype) @Vector(shape.len, usize) {
