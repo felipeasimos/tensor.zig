@@ -446,6 +446,59 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return result;
         }
 
+        /// Apply softmax along a given axis (dimension).
+        /// For each slice along the axis, computes exp(x - max) / sum(exp(x - max)).
+        pub fn softmaxAxis(self: *const @This(), axis: usize, result: anytype) void {
+            if (axis >= shape_arr.len) @panic("Axis out of bounds");
+            const axis_len = shape_arr[axis];
+            var outer_size: usize = 1;
+            if (axis > 0) {
+                var i: usize = 0;
+                while (i < axis) : (i += 1) {
+                    outer_size *= shape_arr[i];
+                }
+            }
+            var inner_size: usize = 1;
+            if (axis < shape_arr.len - 1) {
+                var i: usize = axis + 1;
+                while (i < shape_arr.len) : (i += 1) {
+                    inner_size *= shape_arr[i];
+                }
+            }
+            var out_idx: usize = 0;
+            while (out_idx < outer_size) : (out_idx += 1) {
+                var in_idx: usize = 0;
+                while (in_idx < inner_size) : (in_idx += 1) {
+                    // Find max in this slice
+                    var max_val: dtype = self.data[out_idx * axis_len * inner_size + 0 * inner_size + in_idx];
+                    for (0..axis_len) |a| {
+                        const idx = out_idx * axis_len * inner_size + a * inner_size + in_idx;
+                        if (self.data[idx] > max_val) max_val = self.data[idx];
+                    }
+                    // Compute exp(x - max) and sum
+                    var sum: dtype = 0;
+                    for (0..axis_len) |a| {
+                        const idx = out_idx * axis_len * inner_size + a * inner_size + in_idx;
+                        const exp_val = @exp(self.data[idx] - max_val);
+                        result.data[idx] = exp_val;
+                        sum += exp_val;
+                    }
+                    // Normalize
+                    for (0..axis_len) |a| {
+                        const idx = out_idx * axis_len * inner_size + a * inner_size + in_idx;
+                        result.data[idx] /= sum;
+                    }
+                }
+            }
+        }
+
+        /// Apply axis-wise softmax and return a new tensor with the result.
+        pub fn softmaxAxisNew(self: *const @This(), axis: usize) WiseNewResult() {
+            var result = WiseNewResult(){ .data = undefined };
+            self.softmaxAxis(axis, &result);
+            return result;
+        }
+
         fn TransposeResult(comptime shuffled_axises: anytype) type {
             if (comptime shuffled_axises.len == 0) {
                 var mask = createSequence(usize, strides_arr.len);

@@ -79,4 +79,27 @@ test "1D softmax new" {
     for (result.data) |val| {
         try std.testing.expect(val > 0);
     }
+}
+
+test "1D axis-wise softmax (axis=0)" {
+    const T = Tensor(f32, .{4});
+    var data = [_]f32{ 1.0, 2.0, 3.0, 4.0 };
+    var tensor = T.init(&data);
+    var result = T{ .data = undefined };
+    tensor.softmaxAxis(0, &result);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0321), result.data[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0871), result.data[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.2369), result.data[2], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.6439), result.data[3], 0.001);
+}
+
+test "1D axis-wise softmax new (axis=0)" {
+    const T = Tensor(f32, .{4});
+    var data = [_]f32{ 1.0, 2.0, 3.0, 4.0 };
+    var tensor = T.init(&data);
+    const result = tensor.softmaxAxisNew(0);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0321), result.data[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0871), result.data[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.2369), result.data[2], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.6439), result.data[3], 0.001);
 } 

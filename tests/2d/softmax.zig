@@ -89,4 +89,53 @@ test "2D softmax new" {
     try std.testing.expect(result.data[3] > result.data[2]);
     try std.testing.expect(result.data[2] > result.data[1]);
     try std.testing.expect(result.data[1] > result.data[0]);
+}
+
+test "2D axis-wise softmax (axis=0)" {
+    const T = Tensor(f32, .{2, 3});
+    var data = [_]f32{ 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+    var tensor = T.init(&data);
+    var result = T{ .data = undefined };
+    tensor.softmaxAxis(0, &result);
+    // For each column: softmax([1,4]), softmax([2,5]), softmax([3,6])
+    // col0: exp(1)/[exp(1)+exp(4)], exp(4)/[exp(1)+exp(4)]
+    //      = [0.0474, 0.9526]
+    // col1: [0.0474, 0.9526]
+    // col2: [0.0474, 0.9526]
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0474), result.data[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0474), result.data[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0474), result.data[2], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.9526), result.data[3], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.9526), result.data[4], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.9526), result.data[5], 0.001);
+}
+
+test "2D axis-wise softmax (axis=1)" {
+    const T = Tensor(f32, .{2, 3});
+    var data = [_]f32{ 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+    var tensor = T.init(&data);
+    var result = T{ .data = undefined };
+    tensor.softmaxAxis(1, &result);
+    // For each row: softmax([1,2,3]), softmax([4,5,6])
+    // row0: [0.0900, 0.2447, 0.6652]
+    // row1: [0.0900, 0.2447, 0.6652]
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0900), result.data[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.2447), result.data[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.6652), result.data[2], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0900), result.data[3], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.2447), result.data[4], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.6652), result.data[5], 0.001);
+}
+
+test "2D axis-wise softmax new (axis=1)" {
+    const T = Tensor(f32, .{2, 3});
+    var data = [_]f32{ 1.0, 2.0, 3.0, 4.0, 5.0, 6.0 };
+    var tensor = T.init(&data);
+    const result = tensor.softmaxAxisNew(1);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0900), result.data[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.2447), result.data[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.6652), result.data[2], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0900), result.data[3], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.2447), result.data[4], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.6652), result.data[5], 0.001);
 } 

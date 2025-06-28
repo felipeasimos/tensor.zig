@@ -121,4 +121,45 @@ test "3D softmax numerical stability" {
         try std.testing.expect(val > 0);
         try std.testing.expect(std.math.isFinite(val));
     }
+}
+
+test "3D axis-wise softmax (axis=2)" {
+    const T = Tensor(f32, .{2, 2, 2});
+    var data = [_]f32{ 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0 };
+    var tensor = T.init(&data);
+    var result = T{ .data = undefined };
+    tensor.softmaxAxis(2, &result);
+    // For each innermost pair: softmax([a,b])
+    // [1,2]: [0.2689, 0.7311]
+    // [3,4]: [0.2689, 0.7311]
+    // [5,6]: [0.2689, 0.7311]
+    // [7,8]: [0.2689, 0.7311]
+    try std.testing.expectApproxEqAbs(@as(f32, 0.2689), result.data[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.7311), result.data[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.2689), result.data[2], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.7311), result.data[3], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.2689), result.data[4], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.7311), result.data[5], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.2689), result.data[6], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.7311), result.data[7], 0.001);
+}
+
+test "3D axis-wise softmax new (axis=0)" {
+    const T = Tensor(f32, .{2, 2, 2});
+    var data = [_]f32{ 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0 };
+    var tensor = T.init(&data);
+    const result = tensor.softmaxAxisNew(0);
+    // For each (j,k): softmax([tensor[0,j,k], tensor[1,j,k]])
+    // [1,5]: [0.01799, 0.9820]
+    // [2,6]: [0.01799, 0.9820]
+    // [3,7]: [0.01799, 0.9820]
+    // [4,8]: [0.01799, 0.9820]
+    try std.testing.expectApproxEqAbs(@as(f32, 0.01799), result.data[0], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.01799), result.data[1], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.01799), result.data[2], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.01799), result.data[3], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.9820), result.data[4], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.9820), result.data[5], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.9820), result.data[6], 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.9820), result.data[7], 0.001);
 } 
