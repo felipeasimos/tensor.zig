@@ -170,17 +170,20 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             @compileError(std.fmt.comptimePrint("Invalid operand type {} for {}", .{ T, @This() }));
         }
 
-        pub inline fn wise(self: *@This(), other: anytype, func: fn (dtype, dtype) dtype) *@This() {
-            inline for (0..self.data.len) |i| {
+        pub inline fn wise(self: *const @This(), other: anytype, result: anytype, func: fn (dtype, dtype) dtype) void {
+            inline for (0..result.data.len) |i| {
                 const other_value = otherValue(other, i);
-                self.data[i] = func(self.data[i], other_value);
+                result.data[i] = func(self.data[i], other_value);
             }
-            return self;
         }
 
-        pub inline fn wiseNew(self: *const @This(), other: anytype, func: fn (dtype, dtype) dtype) *@This() {
+        fn WiseNewResult() type {
+            return InnerTensor(dtype, shape_arr, strides_arr, false, false);
+        }
+
+        pub inline fn wiseNew(self: *const @This(), other: anytype, func: fn (dtype, dtype) dtype) WiseNewResult() {
             var result = InnerTensor(dtype, shape_arr, strides_arr, is_ref, readonly){ .data = undefined };
-            self.wise(other, &result, func);
+            _ = self.wise(other, &result, func);
             return result;
         }
 
