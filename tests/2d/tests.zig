@@ -203,4 +203,5 @@ pub const TENSOR_2D = struct {
         try expectEqual(30, tensor2.clone(.{ 1, 0 }));
         try expectEqual(40, tensor2.clone(.{ 1, 1 }));
     }
-}; 
+};
+

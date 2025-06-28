@@ -52,11 +52,18 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
                 return .{ .data = data[0 .. highest_idx + 1] };
             }
             var new: @This() = .{ .data = undefined };
-            std.mem.copyForwards(dtype, &new.data, data[0..]);
+            std.mem.copyForwards(dtype, &new.data, data[0 .. highest_idx + 1]);
             return new;
         }
 
-        pub inline fn scalar(self: *const @This(), idxs: @Vector(_shape.len, usize)) ScalarResult {
+        fn Self() type {
+            if (comptime readonly) {
+                return *const @This();
+            }
+            return *@This();
+        }
+
+        pub inline fn scalar(self: Self(), idxs: @Vector(shape_arr.len, usize)) ScalarResult {
             const idx = @reduce(.Add, self.strides * idxs);
             if (comptime readonly) {
                 return self.data[idx];
@@ -79,11 +86,11 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             );
         }
 
-        pub inline fn view(self: *const @This(), idxs: anytype) ViewResult(idxs.len) {
+        pub inline fn view(self: Self(), idxs: anytype) ViewResult(idxs.len) {
             if (comptime is_ref) {
                 return ViewResult(idxs.len).init(self.data);
             }
-            return ViewResult(idxs.len).init(&self.data);
+            return ViewResult(idxs.len).init(@as([]dtype, self.data[0..]));
         }
 
         fn MutResult(comptime size: usize) type {
@@ -171,7 +178,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         }
 
         pub inline fn wise(self: *const @This(), other: anytype, result: anytype, func: fn (dtype, dtype) dtype) void {
-            inline for (0..result.data.len) |i| {
+            inline for (0..self.num_scalars) |i| {
                 const other_value = otherValue(other, i);
                 result.data[i] = func(self.data[i], other_value);
             }
@@ -182,7 +189,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         }
 
         pub inline fn wiseNew(self: *const @This(), other: anytype, func: fn (dtype, dtype) dtype) WiseNewResult() {
-            var result = InnerTensor(dtype, shape_arr, strides_arr, is_ref, readonly){ .data = undefined };
+            var result = WiseNewResult(){ .data = undefined };
             _ = self.wise(other, &result, func);
             return result;
         }
@@ -264,11 +271,11 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             );
         }
 
-        pub inline fn transpose(self: *const @This(), comptime shuffled_axises: anytype) TransposeResult(shuffled_axises) {
+        pub inline fn transpose(self: Self(), comptime shuffled_axises: anytype) TransposeResult(shuffled_axises) {
             if (comptime is_ref) {
                 return TransposeResult(.{}).init(self.data);
             }
-            return TransposeResult(.{}).init(@constCast(self.data[0..]));
+            return TransposeResult(.{}).init(&self.data);
         }
 
         fn SliceResult(comptime ranges: anytype) type {
