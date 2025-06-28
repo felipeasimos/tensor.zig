@@ -379,3 +379,70 @@ pub const CONVOLUTION_3D = struct {
     }
 };
 
+pub const POOLING_3D = struct {
+    test "3D max pooling" {
+        var data: [8]f64 = .{ 1, 2, 3, 4, 5, 9, 7, 8 };
+        var tensor = Tensor(f64, .{ 2, 2, 2 }).init(data[0..]);
+
+        const result = tensor.poolingNew(.{ 2, 2, 2 }, (struct {
+            pub fn max_pool(acc: f64, idx: usize, val: f64) f64 {
+                return if (idx == 0) val else @max(acc, val);
+            }
+        }).max_pool);
+
+        // Expected: 1x1x1 output (2x2x2 input with 2x2x2 kernel = 1x1x1 output)
+        try expectEqual(.{ 1, 1, 1 }, result.shape);
+        // Max of all 8 elements: max(1,2,3,4,5,9,7,8) = 9
+        try expectEqual(9, result.clone(.{ 0, 0, 0 }));
+    }
+
+    test "3D average pooling" {
+        var data: [8]f64 = .{ 1, 2, 3, 4, 5, 6, 7, 8 };
+        var tensor = Tensor(f64, .{ 2, 2, 2 }).init(data[0..]);
+
+        const result = tensor.poolingNew(.{ 2, 2, 2 }, (struct {
+            pub fn avg_pool(acc: f64, idx: usize, val: f64) f64 {
+                _ = idx; // Suppress unused parameter warning
+                return acc + val;
+            }
+        }).avg_pool);
+
+        // Expected: 1x1x1 output (sum of all 8 elements)
+        try expectEqual(.{ 1, 1, 1 }, result.shape);
+        // Sum of all 8 elements: 1+2+3+4+5+6+7+8 = 36
+        try expectEqual(36, result.clone(.{ 0, 0, 0 }));
+    }
+
+    test "3D partial pooling" {
+        var data: [8]f64 = .{ 1, 2, 3, 4, 5, 6, 7, 8 };
+        var tensor = Tensor(f64, .{ 2, 2, 2 }).init(data[0..]);
+
+        const result = tensor.poolingNew(.{ 2, 2, 1 }, (struct {
+            pub fn max_pool(acc: f64, idx: usize, val: f64) f64 {
+                return if (idx == 0) val else @max(acc, val);
+            }
+        }).max_pool);
+
+        // Expected: 1x1x2 output (2x2x2 input with 2x2x1 kernel = 1x1x2 output)
+        try expectEqual(.{ 1, 1, 2 }, result.shape);
+        // First slice: max(1,2,3,4) = 4
+        try expectEqual(7, result.clone(.{ 0, 0, 0 }));
+        // Second slice: max(5,6,7,8) = 8
+        try expectEqual(8, result.clone(.{ 0, 0, 1 }));
+    }
+
+    test "3D pooling - in-place operation" {
+        var data: [8]f64 = .{ 1, 2, 3, 4, 5, 9, 7, 8 };
+        var tensor = Tensor(f64, .{ 2, 2, 2 }).init(data[0..]);
+        var result_data: [1]f64 = .{0} ** 1;
+        var result = Tensor(f64, .{ 1, 1, 1 }).init(result_data[0..]);
+
+        tensor.pooling(.{ 2, 2, 2 }, &result, (struct {
+            pub fn max_pool(acc: f64, idx: usize, val: f64) f64 {
+                return if (idx == 0) val else @max(acc, val);
+            }
+        }).max_pool);
+
+        try expectEqual(9, result.clone(.{ 0, 0, 0 }));
+    }
+};

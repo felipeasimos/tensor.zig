@@ -257,3 +257,68 @@ pub const CONVOLUTION_2D = struct {
     }
 };
 
+pub const POOLING_2D = struct {
+    test "2D max pooling" {
+        var data: [9]f64 = .{ 1, 2, 3, 4, 9, 6, 7, 8, 5 };
+        var tensor = Tensor(f64, .{ 3, 3 }).init(data[0..]);
+        
+        const result = tensor.poolingNew(.{ 2, 2 }, (struct {
+            pub fn max_pool(acc: f64, idx: usize, val: f64) f64 {
+                return if (idx == 0) val else @max(acc, val);
+            }
+        }).max_pool);
+        
+        // Expected: 2x2 output
+        try expectEqual(.{ 2, 2 }, result.shape);
+        // Top-left: max(1,2,4,9) = 9
+        try expectEqual(9, result.clone(.{ 0, 0 }));
+        // Top-right: max(2,3,9,6) = 9
+        try expectEqual(9, result.clone(.{ 0, 1 }));
+        // Bottom-left: max(4,9,7,8) = 9
+        try expectEqual(9, result.clone(.{ 1, 0 }));
+        // Bottom-right: max(9,6,8,5) = 9
+        try expectEqual(9, result.clone(.{ 1, 1 }));
+    }
+
+    test "2D average pooling" {
+        var data: [9]f64 = .{ 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+        var tensor = Tensor(f64, .{ 3, 3 }).init(data[0..]);
+        
+        const result = tensor.poolingNew(.{ 2, 2 }, (struct {
+            pub fn avg_pool(acc: f64, idx: usize, val: f64) f64 {
+                _ = idx; // Suppress unused parameter warning
+                return acc + val;
+            }
+        }).avg_pool);
+        
+        // Expected: 2x2 output (sum of 2x2 windows)
+        try expectEqual(.{ 2, 2 }, result.shape);
+        // Top-left: 1+2+4+5 = 12
+        try expectEqual(12, result.clone(.{ 0, 0 }));
+        // Top-right: 2+3+5+6 = 16
+        try expectEqual(16, result.clone(.{ 0, 1 }));
+        // Bottom-left: 4+5+7+8 = 24
+        try expectEqual(24, result.clone(.{ 1, 0 }));
+        // Bottom-right: 5+6+8+9 = 28
+        try expectEqual(28, result.clone(.{ 1, 1 }));
+    }
+
+    test "2D pooling - in-place operation" {
+        var data: [9]f64 = .{ 1, 2, 3, 4, 9, 6, 7, 8, 5 };
+        var tensor = Tensor(f64, .{ 3, 3 }).init(data[0..]);
+        var result_data: [4]f64 = .{0} ** 4;
+        var result = Tensor(f64, .{ 2, 2 }).init(result_data[0..]);
+        
+        tensor.pooling(.{ 2, 2 }, &result, (struct {
+            pub fn max_pool(acc: f64, idx: usize, val: f64) f64 {
+                return if (idx == 0) val else @max(acc, val);
+            }
+        }).max_pool);
+        
+        try expectEqual(9, result.clone(.{ 0, 0 }));
+        try expectEqual(9, result.clone(.{ 0, 1 }));
+        try expectEqual(9, result.clone(.{ 1, 0 }));
+        try expectEqual(9, result.clone(.{ 1, 1 }));
+    }
+};
+

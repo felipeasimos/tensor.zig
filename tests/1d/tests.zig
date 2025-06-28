@@ -177,4 +177,59 @@ pub const TENSOR_1D = struct {
         try expectEqual(9, result.clone(.{1}));
         try expectEqual(12, result.clone(.{2}));
     }
+
+    test "1D max pooling" {
+        var data: [6]f64 = .{ 1, 5, 3, 8, 2, 7 };
+        var tensor = Tensor(f64, .{6}).init(data[0..]);
+        
+        const result = tensor.poolingNew(.{3}, (struct {
+            pub fn max_pool(acc: f64, idx: usize, val: f64) f64 {
+                return if (idx == 0) val else @max(acc, val);
+            }
+        }).max_pool);
+        
+        // Expected: [5, 8, 8] (max of 3 consecutive elements)
+        try expectEqual(.{4}, result.shape);
+        try expectEqual(5, result.clone(.{0})); // max(1,5,3)
+        try expectEqual(8, result.clone(.{1})); // max(5,3,8)
+        try expectEqual(8, result.clone(.{2})); // max(3,8,2)
+        try expectEqual(8, result.clone(.{3})); // max(8,2,7)
+    }
+
+    test "1D average pooling" {
+        var data: [6]f64 = .{ 1, 5, 3, 8, 2, 7 };
+        var tensor = Tensor(f64, .{6}).init(data[0..]);
+        
+        const result = tensor.poolingNew(.{3}, (struct {
+            pub fn avg_pool(acc: f64, idx: usize, val: f64) f64 {
+                _ = idx; // Suppress unused parameter warning
+                return acc + val;
+            }
+        }).avg_pool);
+        
+        // Expected: [9, 16, 13, 17] (sum of 3 consecutive elements)
+        try expectEqual(.{4}, result.shape);
+        try expectEqual(9, result.clone(.{0})); // 1+5+3
+        try expectEqual(16, result.clone(.{1})); // 5+3+8
+        try expectEqual(13, result.clone(.{2})); // 3+8+2
+        try expectEqual(17, result.clone(.{3})); // 8+2+7
+    }
+
+    test "1D pooling - in-place operation" {
+        var data: [6]f64 = .{ 1, 5, 3, 8, 2, 7 };
+        var tensor = Tensor(f64, .{6}).init(data[0..]);
+        var result_data: [4]f64 = .{0} ** 4;
+        var result = Tensor(f64, .{4}).init(result_data[0..]);
+        
+        tensor.pooling(.{3}, &result, (struct {
+            pub fn max_pool(acc: f64, idx: usize, val: f64) f64 {
+                return if (idx == 0) val else @max(acc, val);
+            }
+        }).max_pool);
+        
+        try expectEqual(5, result.clone(.{0}));
+        try expectEqual(8, result.clone(.{1}));
+        try expectEqual(8, result.clone(.{2}));
+        try expectEqual(8, result.clone(.{3}));
+    }
 };

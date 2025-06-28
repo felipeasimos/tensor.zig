@@ -316,6 +316,104 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return result;
         }
 
+        /// Perform N-D pooling with a custom aggregation function.
+        /// The kernel shape defines the pooling window size.
+        /// The aggregation function takes: (accumulator, kernel_index, current_value) -> new_accumulator
+        pub inline fn pooling(self: *const @This(), comptime kernel_shape: anytype, result: anytype, func: fn (dtype, usize, dtype) dtype) void {
+            const kernel_shape_arr = comptime asArray(usize, kernel_shape);
+
+            // Perform pooling
+            const result_strides = comptime asArray(usize, result.strides);
+
+            // Calculate total kernel size
+            const total_kernel_size = comptime @reduce(.Mul, @as(@Vector(kernel_shape.len, usize), kernel_shape));
+            // Iterate over all output positions
+            var output_pos: [shape_arr.len]usize = .{0} ** shape_arr.len;
+            var pos: usize = 0;
+
+            while (pos < result.num_scalars) {
+                // Calculate output position from linear index
+                var temp_pos = pos;
+                for (0..shape_arr.len) |dim| {
+                    const stride = result_strides[dim];
+                    output_pos[dim] = temp_pos / stride;
+                    temp_pos = temp_pos % stride;
+                }
+
+                // Perform pooling at this position
+                var accumulator: dtype = 0;
+                var kernel_idx: usize = 0;
+
+                // Iterate over kernel positions
+                var kernel_pos: [kernel_shape_arr.len]usize = .{0} ** kernel_shape_arr.len;
+                var kernel_linear_idx: usize = 0;
+
+                while (kernel_linear_idx < total_kernel_size) {
+                    // Calculate kernel position from linear index
+                    var temp_kernel_idx = kernel_linear_idx;
+                    for (0..kernel_shape_arr.len) |dim| {
+                        const kernel_stride = kernel_stride: {
+                            if (dim == kernel_shape_arr.len - 1) {
+                                break :kernel_stride 1;
+                            } else {
+                                var stride: usize = 1;
+                                for (dim + 1..kernel_shape_arr.len) |i| {
+                                    stride *= kernel_shape_arr[i];
+                                }
+                                break :kernel_stride stride;
+                            }
+                        };
+                        kernel_pos[dim] = temp_kernel_idx / kernel_stride;
+                        temp_kernel_idx = temp_kernel_idx % kernel_stride;
+                    }
+
+                    // Calculate input position
+                    var input_pos: [shape_arr.len]usize = undefined;
+                    for (0..shape_arr.len) |dim| {
+                        input_pos[dim] = output_pos[dim] + kernel_pos[dim];
+                    }
+
+                    // Get input value
+                    const input_val = self.clone(input_pos);
+
+                    // Apply aggregation function
+                    accumulator = @call(.always_inline, func, .{ accumulator, kernel_idx, input_val });
+
+                    kernel_linear_idx += 1;
+                    kernel_idx += 1;
+                }
+
+                // Store result
+                const result_idx = getIndexAt(output_pos, result.strides);
+                result.data[result_idx] = accumulator;
+
+                pos += 1;
+            }
+        }
+
+        fn PoolingNewResult(comptime kernel_shape: anytype) type {
+            const kernel_shape_arr = comptime asArray(usize, kernel_shape);
+
+            // Calculate output shape for valid pooling
+            var output_shape: [shape_arr.len]usize = undefined;
+            inline for (0..shape_arr.len) |i| {
+                if (shape_arr[i] < kernel_shape_arr[i]) {
+                    @compileError("Input tensor dimension must be >= kernel dimension");
+                }
+                output_shape[i] = shape_arr[i] - kernel_shape_arr[i] + 1;
+            }
+
+            const output_strides = calculateStrides(output_shape);
+            return InnerTensor(dtype, output_shape, output_strides, false, false);
+        }
+
+        /// Perform N-D pooling and return a new tensor with the result.
+        pub inline fn poolingNew(self: *const @This(), comptime kernel_shape: anytype, func: fn (dtype, usize, dtype) dtype) PoolingNewResult(kernel_shape) {
+            var result = PoolingNewResult(kernel_shape){ .data = undefined };
+            self.pooling(kernel_shape, &result, func);
+            return result;
+        }
+
         fn TransposeResult(comptime shuffled_axises: anytype) type {
             if (comptime shuffled_axises.len == 0) {
                 var mask = createSequence(usize, strides_arr.len);
