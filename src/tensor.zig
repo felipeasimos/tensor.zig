@@ -414,6 +414,38 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return result;
         }
 
+        /// Apply softmax function to the tensor with numerical stability.
+        /// Computes exp(x - max(x)) / sum(exp(x - max(x))) to avoid overflow.
+        pub inline fn softmax(self: *const @This(), result: anytype) void {
+            // Find the maximum value for numerical stability
+            var max_val: dtype = self.data[0];
+            for (1..self.num_scalars) |i| {
+                if (self.data[i] > max_val) {
+                    max_val = self.data[i];
+                }
+            }
+
+            // Compute exp(x - max_val) and sum
+            var sum: dtype = 0;
+            for (0..self.num_scalars) |i| {
+                const exp_val = @exp(self.data[i] - max_val);
+                result.data[i] = exp_val;
+                sum += exp_val;
+            }
+
+            // Normalize by sum
+            for (0..self.num_scalars) |i| {
+                result.data[i] /= sum;
+            }
+        }
+
+        /// Apply softmax function and return a new tensor with the result.
+        pub inline fn softmaxNew(self: *const @This()) WiseNewResult() {
+            var result = WiseNewResult(){ .data = undefined };
+            self.softmax(&result);
+            return result;
+        }
+
         fn TransposeResult(comptime shuffled_axises: anytype) type {
             if (comptime shuffled_axises.len == 0) {
                 var mask = createSequence(usize, strides_arr.len);
