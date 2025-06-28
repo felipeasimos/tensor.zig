@@ -205,3 +205,55 @@ pub const TENSOR_2D = struct {
     }
 };
 
+pub const CONVOLUTION_2D = struct {
+    test "2D convolution - simple averaging kernel" {
+        var data: [9]f64 = .{ 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+        var kernel_data: [4]f64 = .{ 0.25, 0.25, 0.25, 0.25 };
+        var tensor = Tensor(f64, .{ 3, 3 }).init(data[0..]);
+        var kernel = Tensor(f64, .{ 2, 2 }).init(kernel_data[0..]);
+        
+        const result = tensor.convolutionNew(&kernel);
+        
+        // Expected: 2x2 output
+        try expectEqual(.{ 2, 2 }, result.shape);
+        // Top-left: (1+2+4+5)*0.25 = 3
+        try expectEqual(3, result.clone(.{ 0, 0 }));
+        // Top-right: (2+3+5+6)*0.25 = 4
+        try expectEqual(4, result.clone(.{ 0, 1 }));
+        // Bottom-left: (4+5+7+8)*0.25 = 6
+        try expectEqual(6, result.clone(.{ 1, 0 }));
+        // Bottom-right: (5+6+8+9)*0.25 = 7
+        try expectEqual(7, result.clone(.{ 1, 1 }));
+    }
+
+    test "2D convolution - edge detection kernel" {
+        var data: [9]f64 = .{ 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+        var kernel_data: [9]f64 = .{ -1, -1, -1, -1, 8, -1, -1, -1, -1 };
+        var tensor = Tensor(f64, .{ 3, 3 }).init(data[0..]);
+        var kernel = Tensor(f64, .{ 3, 3 }).init(kernel_data[0..]);
+        
+        const result = tensor.convolutionNew(&kernel);
+        
+        // Expected: 1x1 output (3x3 input with 3x3 kernel = 1x1 output)
+        try expectEqual(.{ 1, 1 }, result.shape);
+        // Center element: 8*5 - (1+2+3+4+6+7+8+9) = 40 - 40 = 0
+        try expectEqual(0, result.clone(.{ 0, 0 }));
+    }
+
+    test "2D convolution - in-place operation" {
+        var data: [9]f64 = .{ 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+        var kernel_data: [4]f64 = .{ 1, 1, 1, 1 };
+        var tensor = Tensor(f64, .{ 3, 3 }).init(data[0..]);
+        var kernel = Tensor(f64, .{ 2, 2 }).init(kernel_data[0..]);
+        var result_data: [4]f64 = .{0} ** 4;
+        var result = Tensor(f64, .{ 2, 2 }).init(result_data[0..]);
+        
+        tensor.convolution(&kernel, &result);
+        
+        try expectEqual(12, result.clone(.{ 0, 0 })); // 1+2+4+5
+        try expectEqual(16, result.clone(.{ 0, 1 })); // 2+3+5+6
+        try expectEqual(24, result.clone(.{ 1, 0 })); // 4+5+7+8
+        try expectEqual(28, result.clone(.{ 1, 1 })); // 5+6+8+9
+    }
+};
+

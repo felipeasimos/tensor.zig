@@ -331,4 +331,51 @@ pub const TENSOR_3D = struct {
         try expectEqual(70, tensor2.clone(.{ 1, 1, 0 }));
         try expectEqual(80, tensor2.clone(.{ 1, 1, 1 }));
     }
-}; 
+};
+
+pub const CONVOLUTION_3D = struct {
+    test "3D convolution - simple case" {
+        var data: [8]f64 = .{ 1, 2, 3, 4, 5, 6, 7, 8 };
+        var kernel_data: [8]f64 = .{ 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125, 0.125 };
+        var tensor = Tensor(f64, .{ 2, 2, 2 }).init(data[0..]);
+        var kernel = Tensor(f64, .{ 2, 2, 2 }).init(kernel_data[0..]);
+
+        const result = tensor.convolutionNew(&kernel);
+
+        // Expected: 1x1x1 output (2x2x2 input with 2x2x2 kernel = 1x1x1 output)
+        try expectEqual(.{ 1, 1, 1 }, result.shape);
+        // Average of all 8 elements: (1+2+3+4+5+6+7+8)*0.125 = 36*0.125 = 4.5
+        try expectEqual(4.5, result.clone(.{ 0, 0, 0 }));
+    }
+
+    test "3D convolution - partial kernel" {
+        var data: [8]f64 = .{ 1, 2, 3, 4, 5, 6, 7, 8 };
+        var kernel_data: [4]f64 = .{ 1, 1, 1, 1 };
+        var tensor = Tensor(f64, .{ 2, 2, 2 }).init(data[0..]);
+        var kernel = Tensor(f64, .{ 2, 2, 1 }).init(kernel_data[0..]);
+
+        const result = tensor.convolutionNew(&kernel);
+
+        // Expected: 1x1x2 output (2x2x2 input with 2x2x1 kernel = 1x1x2 output)
+        try expectEqual(.{ 1, 1, 2 }, result.shape);
+        // First slice: (1+2+3+4) = 10
+        try expectEqual(16, result.clone(.{ 0, 0, 0 }));
+        // Second slice: (5+6+7+8) = 26
+        try expectEqual(20, result.clone(.{ 0, 0, 1 }));
+    }
+
+    test "3D convolution - in-place operation" {
+        var data: [8]f64 = .{ 1, 2, 3, 4, 5, 6, 7, 8 };
+        var kernel_data: [4]f64 = .{ 1, 1, 1, 1 };
+        var tensor = Tensor(f64, .{ 2, 2, 2 }).init(data[0..]);
+        var kernel = Tensor(f64, .{ 2, 2, 1 }).init(kernel_data[0..]);
+        var result_data: [2]f64 = .{0} ** 2;
+        var result = Tensor(f64, .{ 1, 1, 2 }).init(result_data[0..]);
+
+        tensor.convolution(&kernel, &result);
+
+        try expectEqual(16, result.clone(.{ 0, 0, 0 }));
+        try expectEqual(20, result.clone(.{ 0, 0, 1 }));
+    }
+};
+

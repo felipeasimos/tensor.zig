@@ -133,4 +133,48 @@ pub const TENSOR_1D = struct {
         try expectEqual(20, tensor2.clone(.{1}));
         try expectEqual(30, tensor2.clone(.{2}));
     }
+    test "1D convolution - simple case" {
+        var data: [5]f64 = .{ 1, 2, 3, 4, 5 };
+        var kernel_data: [3]f64 = .{ 1, 1, 1 };
+        var tensor = Tensor(f64, .{5}).init(data[0..]);
+        var kernel = Tensor(f64, .{3}).init(kernel_data[0..]);
+        
+        const result = tensor.convolutionNew(&kernel);
+        
+        // Expected: [6, 9, 12] (sum of 3 consecutive elements)
+        try expectEqual(.{3}, result.shape);
+        try expectEqual(6, result.clone(.{0})); // 1+2+3
+        try expectEqual(9, result.clone(.{1})); // 2+3+4
+        try expectEqual(12, result.clone(.{2})); // 3+4+5
+    }
+
+    test "1D convolution - edge detection kernel" {
+        var data: [5]f64 = .{ 1, 2, 3, 4, 5 };
+        var kernel_data: [3]f64 = .{ -1, 0, 1 };
+        var tensor = Tensor(f64, .{5}).init(data[0..]);
+        var kernel = Tensor(f64, .{3}).init(kernel_data[0..]);
+        
+        const result = tensor.convolutionNew(&kernel);
+        
+        // Expected: [2, 2, 2] (difference between consecutive elements)
+        try expectEqual(.{3}, result.shape);
+        try expectEqual(2, result.clone(.{0})); // -1*1 + 0*2 + 1*3 = 2
+        try expectEqual(2, result.clone(.{1})); // -1*2 + 0*3 + 1*4 = 2
+        try expectEqual(2, result.clone(.{2})); // -1*3 + 0*4 + 1*5 = 2
+    }
+
+    test "1D convolution - in-place operation" {
+        var data: [5]f64 = .{ 1, 2, 3, 4, 5 };
+        var kernel_data: [3]f64 = .{ 1, 1, 1 };
+        var tensor = Tensor(f64, .{5}).init(data[0..]);
+        var kernel = Tensor(f64, .{3}).init(kernel_data[0..]);
+        var result_data: [3]f64 = .{0} ** 3;
+        var result = Tensor(f64, .{3}).init(result_data[0..]);
+        
+        tensor.convolution(&kernel, &result);
+        
+        try expectEqual(6, result.clone(.{0}));
+        try expectEqual(9, result.clone(.{1}));
+        try expectEqual(12, result.clone(.{2}));
+    }
 };

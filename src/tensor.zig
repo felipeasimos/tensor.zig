@@ -39,8 +39,8 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
     const ScalarResult = if (readonly) dtype else *dtype;
 
     return struct {
-        comptime shape: @Vector(shape_arr.len, usize) = shape_vec,
-        comptime strides: @Vector(strides_arr.len, usize) = strides_vec,
+        comptime shape: @TypeOf(shape_arr) = shape_arr,
+        comptime strides: @TypeOf(strides_arr) = strides_arr,
         comptime num_scalars: usize = total_num_scalars,
         comptime is_reference: bool = is_ref,
         comptime is_view: bool = _is_view,
@@ -239,6 +239,80 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         pub inline fn matmulNew(self: *const @This(), other: anytype) MatMulNewResult(other.shape) {
             var result = MatMulNewResult(other.shape){ .data = undefined };
             self.matmul(other, &result);
+            return result;
+        }
+
+        pub inline fn convolution(self: *const @This(), kernel: anytype, result: anytype) void {
+            // Perform convolution
+            const kernel_strides = comptime asArray(usize, kernel.strides);
+            const result_strides = comptime asArray(usize, result.strides);
+            // Iterate over all output positions
+            var output_pos: [shape_arr.len]usize = .{0} ** shape_arr.len;
+            var pos: usize = 0;
+            while (pos < result.num_scalars) {
+                // Calculate output position from linear index
+                var temp_pos = pos;
+                for (0..shape_arr.len) |dim| {
+                    const stride = result_strides[dim];
+                    output_pos[dim] = temp_pos / stride;
+                    temp_pos = temp_pos % stride;
+                }
+                // Perform convolution at this position
+                var conv_sum: dtype = 0;
+                // Iterate over kernel positions
+                var kernel_pos: [kernel.shape.len]usize = .{0} ** kernel.shape.len;
+                var kernel_idx: usize = 0;
+                while (kernel_idx < kernel.num_scalars) {
+                    // Calculate kernel position from linear index
+                    var temp_kernel_idx = kernel_idx;
+                    for (0..kernel.shape.len) |dim| {
+                        const kernel_stride = kernel_strides[dim];
+                        kernel_pos[dim] = temp_kernel_idx / kernel_stride;
+                        temp_kernel_idx = temp_kernel_idx % kernel_stride;
+                    }
+                    // Calculate input position
+                    var input_pos: [shape_arr.len]usize = undefined;
+                    for (0..shape_arr.len) |dim| {
+                        if (kernel.shape[dim] == 1) {
+                            input_pos[dim] = output_pos[dim];
+                        } else {
+                            input_pos[dim] = output_pos[dim] + kernel_pos[dim];
+                        }
+                    }
+                    // Get input and kernel values
+                    const input_val = self.clone(input_pos);
+                    const kernel_val = kernel.clone(kernel_pos);
+                    // Accumulate convolution sum
+                    conv_sum += input_val * kernel_val;
+                    kernel_idx += 1;
+                }
+                // Store result
+                const result_idx = getIndexAt(output_pos, result.strides);
+                result.data[result_idx] = conv_sum;
+                pos += 1;
+            }
+        }
+
+        fn ConvolutionNewResult(kernel_shape: @Vector(shape_arr.len, usize)) type {
+            const kernel_shape_arr = comptime asArray(usize, kernel_shape);
+
+            // Calculate output shape for valid convolution
+            var output_shape: [shape_arr.len]usize = undefined;
+            for (0..shape_arr.len) |i| {
+                if (shape_arr[i] < kernel_shape_arr[i]) {
+                    @compileError("Input tensor dimension must be >= kernel dimension");
+                }
+                output_shape[i] = shape_arr[i] - kernel_shape_arr[i] + 1;
+            }
+
+            const output_strides = calculateStrides(output_shape);
+            return InnerTensor(dtype, output_shape, output_strides, false, false);
+        }
+
+        /// Perform N-D convolution and return a new tensor with the result.
+        pub inline fn convolutionNew(self: *const @This(), kernel: anytype) ConvolutionNewResult(kernel.shape) {
+            var result = ConvolutionNewResult(kernel.shape){ .data = undefined };
+            self.convolution(kernel, &result);
             return result;
         }
 
