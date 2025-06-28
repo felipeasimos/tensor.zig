@@ -134,4 +134,3 @@ pub const TENSOR_1D = struct {
         try expectEqual(30, tensor2.clone(.{2}));
     }
 };
-
