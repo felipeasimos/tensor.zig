@@ -47,6 +47,16 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
 
         data: DataSequenceType,
 
+        pub fn random(rand: std.Random) @This() {
+            var new = @This(){ .data = undefined };
+            new.randomize(rand);
+            return new;
+        }
+
+        pub fn randomize(self: *@This(), rand: std.Random) void {
+            rand.bytes(std.mem.asBytes(self.data));
+        }
+
         pub fn init(data: []dtype) @This() {
             if (comptime is_ref) {
                 return .{ .data = data[0 .. highest_idx + 1] };
@@ -177,10 +187,22 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             @compileError(std.fmt.comptimePrint("Invalid operand type {} for {}", .{ T, @This() }));
         }
 
-        pub inline fn wise(self: *const @This(), other: anytype, result: anytype, func: fn (dtype, dtype) dtype) void {
+        pub inline fn copy(self: *@This(), from: anytype) void {
+            for (0..self.num_scalars) |i| {
+                self.data[i] = from.data[i];
+            }
+        }
+
+        pub inline fn apply(self: *@This(), f: fn (dtype) dtype) void {
+            for (0..self.num_scalars) |i| {
+                self.data[i] = f(self.data[i]);
+            }
+        }
+
+        pub inline fn wise(self: *const @This(), other: anytype, result: anytype, f: fn (dtype, dtype) dtype) void {
             inline for (0..self.num_scalars) |i| {
                 const other_value = otherValue(other, i);
-                result.data[i] = func(self.data[i], other_value);
+                result.data[i] = f(self.data[i], other_value);
             }
         }
 
@@ -188,9 +210,9 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return InnerTensor(dtype, shape_arr, strides_arr, false, false);
         }
 
-        pub inline fn wiseNew(self: *const @This(), other: anytype, func: fn (dtype, dtype) dtype) WiseNewResult() {
+        pub inline fn wiseNew(self: *const @This(), other: anytype, f: fn (dtype, dtype) dtype) WiseNewResult() {
             var result = WiseNewResult(){ .data = undefined };
-            _ = self.wise(other, &result, func);
+            _ = self.wise(other, &result, f);
             return result;
         }
 
@@ -319,7 +341,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         /// Perform N-D pooling with a custom aggregation function.
         /// The kernel shape defines the pooling window size.
         /// The aggregation function takes: (accumulator, kernel_index, current_value) -> new_accumulator
-        pub inline fn pooling(self: *const @This(), comptime kernel_shape: anytype, result: anytype, func: fn (dtype, usize, dtype) dtype) void {
+        pub inline fn pooling(self: *const @This(), comptime kernel_shape: anytype, result: anytype, f: fn (dtype, usize, dtype) dtype) void {
             const kernel_shape_arr = comptime asArray(usize, kernel_shape);
 
             // Perform pooling
@@ -377,7 +399,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
                     const input_val = self.clone(input_pos);
 
                     // Apply aggregation function
-                    accumulator = @call(.always_inline, func, .{ accumulator, kernel_idx, input_val });
+                    accumulator = @call(.always_inline, f, .{ accumulator, kernel_idx, input_val });
 
                     kernel_linear_idx += 1;
                     kernel_idx += 1;
@@ -408,9 +430,9 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         }
 
         /// Perform N-D pooling and return a new tensor with the result.
-        pub inline fn poolingNew(self: *const @This(), comptime kernel_shape: anytype, func: fn (dtype, usize, dtype) dtype) PoolingNewResult(kernel_shape) {
+        pub inline fn poolingNew(self: *const @This(), comptime kernel_shape: anytype, f: fn (dtype, usize, dtype) dtype) PoolingNewResult(kernel_shape) {
             var result = PoolingNewResult(kernel_shape){ .data = undefined };
-            self.pooling(kernel_shape, &result, func);
+            self.pooling(kernel_shape, &result, f);
             return result;
         }
 

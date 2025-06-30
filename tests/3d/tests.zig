@@ -121,7 +121,11 @@ pub const TENSOR_3D = struct {
         var data: [24]f64 = createSequence(f64, 24);
         var tensor = TensorView(f64, .{ 2, 3, 4 }).init(data[0..]);
 
+        try expectEqual(.{ 12, 4, 1 }, tensor.strides);
+
         var new_tensor = tensor.reshape(.{ 4, 3, 2 });
+
+        try expectEqual(.{ 6, 2, 1 }, new_tensor.strides);
 
         try expectEqual(data[0..6], new_tensor.mut(.{0}).data);
         try expectEqual(data[6..12], new_tensor.mut(.{1}).data);
