@@ -56,7 +56,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return new;
         }
 
-        pub fn randomize(self: *@This(), rand: std.Random) void {
+        pub fn randomize(self: anytype, rand: std.Random) void {
             switch (@typeInfo(dtype)) {
                 .comptime_int, .int => {
                     for (0..self.data.len) |i| {
@@ -88,14 +88,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return new;
         }
 
-        fn Self() type {
-            if (comptime readonly) {
-                return *const @This();
-            }
-            return *@This();
-        }
-
-        pub inline fn scalar(self: Self(), idxs: @Vector(shape_arr.len, usize)) ScalarResult {
+        pub inline fn scalar(self: anytype, idxs: @Vector(shape_arr.len, usize)) ScalarResult {
             const idx = @reduce(.Add, self.strides * idxs);
             if (comptime readonly) {
                 return self.data[idx];
@@ -118,7 +111,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             );
         }
 
-        pub inline fn view(self: Self(), idxs: anytype) ViewResult(idxs.len) {
+        pub inline fn view(self: anytype, idxs: anytype) ViewResult(idxs.len) {
             if (comptime is_ref) {
                 return ViewResult(idxs.len).init(self.data);
             }
@@ -141,7 +134,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         }
 
         /// get a mutable view
-        pub inline fn mut(self: *@This(), idxs: anytype) MutResult(idxs.len) {
+        pub inline fn mut(self: anytype, idxs: anytype) MutResult(idxs.len) {
             if (comptime idxs.len == 0) {
                 return MutResult(0).init(self.data[0..]);
             }
@@ -170,7 +163,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         }
 
         /// get a subtensor. `idxs` needs to be an array.
-        pub inline fn clone(self: *const @This(), idxs: anytype) CloneResult(idxs.len) {
+        pub inline fn clone(self: anytype, idxs: anytype) CloneResult(idxs.len) {
             if (comptime idxs.len == 0) {
                 return CloneResult(0).init(&self.data);
             }
@@ -192,7 +185,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return InnerTensor(dtype, shape, calculateStrides(shape), is_ref, readonly);
         }
 
-        pub inline fn reshape(self: *const @This(), comptime shape: anytype) ReshapeResult(shape) {
+        pub inline fn reshape(self: anytype, comptime shape: anytype) ReshapeResult(shape) {
             if (comptime !stridesAreContiguous()) {
                 @compileError("Can't reshape a tensor without contiguous strides");
             }
@@ -213,19 +206,19 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             @compileError(std.fmt.comptimePrint("Invalid operand type {} for {}", .{ T, @This() }));
         }
 
-        pub inline fn copy(self: *@This(), from: anytype) void {
+        pub inline fn copy(self: anytype, from: anytype) void {
             for (0..self.num_scalars) |i| {
                 self.data[i] = from.data[i];
             }
         }
 
-        pub inline fn apply(self: *@This(), f: fn (dtype) dtype) void {
+        pub inline fn apply(self: anytype, f: fn (dtype) dtype) void {
             for (0..self.num_scalars) |i| {
                 self.data[i] = f(self.data[i]);
             }
         }
 
-        pub inline fn wise(self: *const @This(), other: anytype, result: anytype, f: fn (dtype, dtype) dtype) void {
+        pub inline fn wise(self: anytype, other: anytype, result: anytype, f: fn (dtype, dtype) dtype) void {
             for (0..self.num_scalars) |i| {
                 const other_value = otherValue(other, i);
                 result.data[i] = f(self.data[i], other_value);
@@ -236,13 +229,13 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return InnerTensor(dtype, shape_arr, strides_arr, false, false);
         }
 
-        pub inline fn wiseNew(self: *const @This(), other: anytype, f: fn (dtype, dtype) dtype) WiseNewResult() {
+        pub inline fn wiseNew(self: anytype, other: anytype, f: fn (dtype, dtype) dtype) WiseNewResult() {
             var result = WiseNewResult(){ .data = undefined };
             _ = self.wise(other, &result, f);
             return result;
         }
 
-        pub inline fn matmul(self: *const @This(), other: anytype, result: anytype) void {
+        pub inline fn matmul(self: anytype, other: anytype, result: anytype) void {
             // (P, Q) x (Q, R) -> (P, R)
             const P = comptime shape_arr[0];
             const Q = comptime shape_arr[1];
@@ -284,13 +277,13 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return InnerTensor(dtype, new_shape, new_strides, false, false);
         }
 
-        pub inline fn matmulNew(self: *const @This(), other: anytype) MatMulNewResult(other.shape) {
+        pub inline fn matmulNew(self: anytype, other: anytype) MatMulNewResult(other.shape) {
             var result = MatMulNewResult(other.shape){ .data = undefined };
             self.matmul(other, &result);
             return result;
         }
 
-        pub inline fn convolution(self: *const @This(), kernel: anytype, result: anytype) void {
+        pub inline fn convolution(self: anytype, kernel: anytype, result: anytype) void {
             // Perform convolution
             const kernel_strides = comptime asArray(usize, kernel.strides);
             const result_strides = comptime asArray(usize, result.strides);
@@ -358,7 +351,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         }
 
         /// Perform N-D convolution and return a new tensor with the result.
-        pub inline fn convolutionNew(self: *const @This(), kernel: anytype) ConvolutionNewResult(kernel.shape) {
+        pub inline fn convolutionNew(self: anytype, kernel: anytype) ConvolutionNewResult(kernel.shape) {
             var result = ConvolutionNewResult(kernel.shape){ .data = undefined };
             self.convolution(kernel, &result);
             return result;
@@ -367,7 +360,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         /// Perform N-D pooling with a custom aggregation function.
         /// The kernel shape defines the pooling window size.
         /// The aggregation function takes: (accumulator, kernel_index, current_value) -> new_accumulator
-        pub inline fn pooling(self: *const @This(), comptime kernel_shape: anytype, result: anytype, f: fn (dtype, usize, dtype) dtype) void {
+        pub inline fn pooling(self: anytype, comptime kernel_shape: anytype, result: anytype, f: fn (dtype, usize, dtype) dtype) void {
             const kernel_shape_arr = comptime asArray(usize, kernel_shape);
 
             // Perform pooling
@@ -456,7 +449,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         }
 
         /// Perform N-D pooling and return a new tensor with the result.
-        pub inline fn poolingNew(self: *const @This(), comptime kernel_shape: anytype, f: fn (dtype, usize, dtype) dtype) PoolingNewResult(kernel_shape) {
+        pub inline fn poolingNew(self: anytype, comptime kernel_shape: anytype, f: fn (dtype, usize, dtype) dtype) PoolingNewResult(kernel_shape) {
             var result = PoolingNewResult(kernel_shape){ .data = undefined };
             self.pooling(kernel_shape, &result, f);
             return result;
@@ -464,7 +457,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
 
         /// Apply softmax function to the tensor with numerical stability.
         /// Computes exp(x - max(x)) / sum(exp(x - max(x))) to avoid overflow.
-        pub inline fn softmax(self: *const @This(), result: anytype) void {
+        pub inline fn softmax(self: anytype, result: anytype) void {
             // Find the maximum value for numerical stability
             var max_val: dtype = self.data[0];
             for (1..self.num_scalars) |i| {
@@ -488,7 +481,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         }
 
         /// Apply softmax function and return a new tensor with the result.
-        pub inline fn softmaxNew(self: *const @This()) WiseNewResult() {
+        pub inline fn softmaxNew(self: anytype) WiseNewResult() {
             var result = WiseNewResult(){ .data = undefined };
             self.softmax(&result);
             return result;
@@ -496,7 +489,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
 
         /// Apply softmax along a given axis (dimension).
         /// For each slice along the axis, computes exp(x - max) / sum(exp(x - max)).
-        pub fn softmaxAxis(self: *const @This(), axis: usize, result: anytype) void {
+        pub fn softmaxAxis(self: anytype, axis: usize, result: anytype) void {
             if (axis >= shape_arr.len) @panic("Axis out of bounds");
             const axis_len = shape_arr[axis];
             var outer_size: usize = 1;
@@ -541,7 +534,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         }
 
         /// Apply axis-wise softmax and return a new tensor with the result.
-        pub fn softmaxAxisNew(self: *const @This(), axis: usize) WiseNewResult() {
+        pub fn softmaxAxisNew(self: anytype, axis: usize) WiseNewResult() {
             var result = WiseNewResult(){ .data = undefined };
             self.softmaxAxis(axis, &result);
             return result;
@@ -576,7 +569,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             );
         }
 
-        pub inline fn transpose(self: Self(), comptime shuffled_axises: anytype) TransposeResult(shuffled_axises) {
+        pub inline fn transpose(self: anytype, comptime shuffled_axises: anytype) TransposeResult(shuffled_axises) {
             if (comptime is_ref) {
                 return TransposeResult(.{}).init(self.data);
             }
@@ -604,7 +597,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return true;
         }
 
-        pub inline fn slice(self: *const @This(), comptime ranges: anytype) SliceResult(ranges) {
+        pub inline fn slice(self: anytype, comptime ranges: anytype) SliceResult(ranges) {
             if (comptime !validateRanges(ranges)) {
                 @compileError("Invalid slicing ranges");
             }
