@@ -34,7 +34,10 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         .Add,
         (shape_vec - @as(@Vector(shape_arr.len, usize), @splat(1))) * strides_vec,
     );
-    const DataSequenceType = if (is_ref) []dtype else [total_num_scalars]dtype;
+    const DataSequenceType = if (is_ref)
+        []dtype
+    else
+        [total_num_scalars]dtype;
 
     const ScalarResult = if (readonly) dtype else *dtype;
 
@@ -54,7 +57,20 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         }
 
         pub fn randomize(self: *@This(), rand: std.Random) void {
-            rand.bytes(std.mem.asBytes(self.data));
+            switch (@typeInfo(dtype)) {
+                .comptime_int, .int => {
+                    for (0..self.data.len) |i| {
+                        self.data[i] = rand.int(dtype);
+                    }
+                },
+                .comptime_float, .float => {
+                    for (0..self.data.len) |i| {
+                        self.data[i] = rand.floatNorm(dtype);
+                    }
+                },
+                else => @compileError("invalid dtype"),
+            }
+            rand.bytes(std.mem.asBytes(self.data[0..]));
         }
 
         pub fn init(data: []dtype) @This() {
@@ -63,6 +79,12 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             }
             var new: @This() = .{ .data = undefined };
             std.mem.copyForwards(dtype, &new.data, data[0 .. highest_idx + 1]);
+            return new;
+        }
+
+        pub fn zeroesNew() @This() {
+            var new: @This() = undefined;
+            @memset(&new.data, 0);
             return new;
         }
 
@@ -136,10 +158,14 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             if (comptime shape_arr.len - size == 0) {
                 return dtype;
             }
+            const new_shape = comptime asSubArray(usize, shape_arr, size, shape_arr.len - 1);
+            const new_strides = comptime calculateStrides(new_shape);
             return InnerTensor(
                 dtype,
-                comptime asSubArray(usize, shape_arr, size, shape_arr.len - 1),
+                new_shape,
+                new_strides,
                 false,
+                readonly,
             );
         }
 
@@ -170,19 +196,19 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             if (comptime !stridesAreContiguous()) {
                 @compileError("Can't reshape a tensor without contiguous strides");
             }
-            const result = ReshapeResult(shape).init(self.data);
+            const result = ReshapeResult(shape).init(self.data[0..]);
             if (comptime result.num_scalars != self.num_scalars) {
                 @compileError("Invalid reshape size (the final number of scalars don't match the current tensor)");
             }
             return result;
         }
 
-        fn otherValue(other: anytype, comptime i: usize) dtype {
+        fn otherValue(other: anytype, i: usize) dtype {
             const T = @TypeOf(other);
             switch (@typeInfo(T)) {
                 .comptime_int, .comptime_float, .int, .float => return other,
                 .pointer, .@"struct" => return other.data[i],
-                inline else => {},
+                inline else => other,
             }
             @compileError(std.fmt.comptimePrint("Invalid operand type {} for {}", .{ T, @This() }));
         }
@@ -200,7 +226,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         }
 
         pub inline fn wise(self: *const @This(), other: anytype, result: anytype, f: fn (dtype, dtype) dtype) void {
-            inline for (0..self.num_scalars) |i| {
+            for (0..self.num_scalars) |i| {
                 const other_value = otherValue(other, i);
                 result.data[i] = f(self.data[i], other_value);
             }
@@ -222,7 +248,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             const Q = comptime shape_arr[1];
             const R = comptime other.shape[1];
             if (comptime (result.shape[0] != P or result.shape[1] != R or other.shape[0] != Q)) {
-                @compileError("Number of columns don't match with number of rows");
+                @compileError(std.fmt.comptimePrint("Number of columns don't match with number of rows: {any} x {any} -> {any}", .{ self.shape, other.shape, result.shape }));
             }
             for (0..P) |i| {
                 for (0..R) |j| {
@@ -238,7 +264,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             }
         }
 
-        fn MatMulNewResult(other_shape: @Vector(shape_arr.len, usize)) type {
+        fn MatMulNewResult(other_shape: [shape_arr.len]usize) type {
             const other_length = GetTypeLength(@TypeOf(other_shape));
             if (other_length != 2 or shape_arr.len != 2) {
                 @compileError("Incompatible shape with matmul");
@@ -250,7 +276,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             const Q2 = other_shape[0];
             const R = other_shape[1];
             if (Q1 != Q2) {
-                @compileError("Number of columns don't match with number of rows");
+                @compileError(std.fmt.comptimePrint("Number of columns don't match with number of rows: {any} x {any}", .{ shape_arr, other_shape }));
             }
 
             const new_shape = comptime .{ P, R };
