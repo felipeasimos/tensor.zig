@@ -188,4 +188,5 @@ pub const VIEWS_3D = struct {
         try expectEqual(data[6], reshaped.scalar(.{6}));
         try expectEqual(data[7], reshaped.scalar(.{7}));
     }
-}; 
+};
+

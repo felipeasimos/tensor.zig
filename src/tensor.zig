@@ -22,17 +22,14 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
     }
 
     const shape_arr = asArray(usize, _shape);
-    const shape_vec: @Vector(shape_arr.len, usize) = shape_arr;
-
     const strides_arr = asArray(usize, _strides);
-    const strides_vec: @Vector(strides_arr.len, usize) = strides_arr;
 
     const _is_view = (is_ref and readonly);
 
-    const total_num_scalars = @reduce(.Mul, shape_vec);
+    const total_num_scalars = @reduce(.Mul, @as(@Vector(shape_arr.len, usize), shape_arr));
     const highest_idx = @reduce(
         .Add,
-        (shape_vec - @as(@Vector(shape_arr.len, usize), @splat(1))) * strides_vec,
+        (shape_arr - @as(@Vector(shape_arr.len, usize), @splat(1))) * strides_arr,
     );
     const DataSequenceType = if (is_ref)
         []dtype
@@ -550,13 +547,13 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             }
             const new_strides = @shuffle(
                 usize,
-                strides_vec,
+                strides_arr,
                 undefined,
                 shuffled_axises,
             );
             const new_shape = @shuffle(
                 usize,
-                shape_vec,
+                shape_arr,
                 undefined,
                 shuffled_axises,
             );
