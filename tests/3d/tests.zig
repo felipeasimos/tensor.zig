@@ -3,6 +3,7 @@ const expectEqual = std.testing.expectEqual;
 const expect = std.testing.expect;
 const TensorView = @import("tensor").TensorView;
 const Tensor = @import("tensor").Tensor;
+const op = @import("tensor").op;
 
 fn createSequence(comptime dtype: type, comptime n: usize) [n]dtype {
     var seq: [n]dtype = .{1} ** n;
@@ -221,7 +222,7 @@ pub const TENSOR_3D = struct {
         const reshaped_mut_to_2 = mut_to_2.reshape(.{ 2, 4 });
         try expectEqual(.{ 2, 4 }, reshaped_mut_to_2.shape);
         try expectEqual(8, reshaped_mut_to_2.num_scalars);
-        const result = subtensor1.matmulNew(subtensor2.mut(.{}).reshape(.{ 2, 4 }));
+        const result = op.matmulNew(&subtensor1, subtensor2.mut(.{}).reshape(.{ 2, 4 }));
 
         try expectEqual(.{ 4, 4 }, result.shape);
     }

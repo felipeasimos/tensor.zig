@@ -44,7 +44,7 @@ pub fn MatMulNewResult(dtype: type, a_shape: anytype, b_shape: anytype) type {
     return tensor.InnerTensor(dtype, new_shape, new_strides, false, false);
 }
 
-pub inline fn matmulNew(a: anytype, b: anytype) MatMulNewResult(b.shape) {
+pub inline fn matmulNew(a: anytype, b: anytype) MatMulNewResult(a.dtype, a.shape, b.shape) {
     var result = MatMulNewResult(a.dtype, a.shape, b.shape){ .data = undefined };
     matmul(a, b, &result);
     return result;

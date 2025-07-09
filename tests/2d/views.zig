@@ -149,7 +149,7 @@ pub const VIEWS_2D = struct {
         const view1 = tensor1.view(.{});
         const view2 = tensor2.view(.{});
 
-        const result = view1.matmulNew(&view2);
+        const result = op.matmulNew(&view1, &view2);
 
         try expectEqual(.{ 2, 2 }, result.shape);
         try expectEqual(10, result.clone(.{ 0, 0 }));

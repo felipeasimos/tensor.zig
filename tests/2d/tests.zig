@@ -102,7 +102,7 @@ pub const TENSOR_2D = struct {
         var data2: [8]f64 = createSequence(f64, 8);
         var tensor2 = Tensor(f64, .{ 4, 2 }).init(&data2);
 
-        const result = tensor1.matmulNew(&tensor2);
+        const result = op.matmulNew(&tensor1, &tensor2);
         try expectEqual(result.shape, [_]usize{ 3, 2 });
     }
     test "transpose" {

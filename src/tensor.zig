@@ -235,12 +235,6 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             return result;
         }
 
-        pub inline fn matmulNew(a: anytype, b: anytype) op.MatMulNewResult(a.dtype, a.shape, b.shape) {
-            var result = op.MatMulNewResult(a.dtype, a.shape, b.shape){ .data = undefined };
-            op.matmul(a, b, &result);
-            return result;
-        }
-
         fn TransposeResult(comptime shuffled_axises: anytype) type {
             if (comptime shuffled_axises.len == 0) {
                 var mask = utils.createSequence(usize, strides_arr.len);
