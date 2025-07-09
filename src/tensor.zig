@@ -1,17 +1,18 @@
 const std = @import("std");
+const utils = @import("utils.zig");
 
 /// OwnedTensor owns the underlying tensor data and can make changes to it
 /// read-only tensor view can be accessed with the `view()` method
 pub fn Tensor(comptime dtype: type, comptime _shape: anytype) type {
     @setEvalBranchQuota(10000);
-    return InnerTensor(dtype, _shape, calculateStrides(_shape), false, false);
+    return InnerTensor(dtype, _shape, utils.calculateStrides(_shape), false, false);
 }
 
 /// TensorView is a compile-time type that represents a view into a tensor.
 /// Never writes to the underlying data
 pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
     @setEvalBranchQuota(10000);
-    return InnerTensor(dtype, _shape, calculateStrides(_shape), true, true);
+    return InnerTensor(dtype, _shape, utils.calculateStrides(_shape), true, true);
 }
 
 fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides: anytype, comptime is_ref: bool, comptime readonly: bool) type {
@@ -21,8 +22,8 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
         @compileError("Only floats and integers are valid tensor dtypes");
     }
 
-    const shape_arr = asArray(usize, _shape);
-    const strides_arr = asArray(usize, _strides);
+    const shape_arr = utils.asArray(usize, _shape);
+    const strides_arr = utils.asArray(usize, _strides);
 
     const _is_view = (is_ref and readonly);
 
@@ -41,6 +42,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
     return struct {
         comptime shape: @TypeOf(shape_arr) = shape_arr,
         comptime strides: @TypeOf(strides_arr) = strides_arr,
+        comptime dtype: type = dtype,
         comptime num_scalars: usize = total_num_scalars,
         comptime is_reference: bool = is_ref,
         comptime is_view: bool = _is_view,
@@ -85,8 +87,8 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return new;
         }
 
-        pub inline fn scalar(self: anytype, idxs: @Vector(shape_arr.len, usize)) ScalarResult {
-            const idx = @reduce(.Add, self.strides * idxs);
+        pub inline fn scalar(self: anytype, idxs: @TypeOf(shape_arr)) ScalarResult {
+            const idx = utils.getIndexAt(idxs, self.strides);
             if (comptime readonly) {
                 return self.data[idx];
             }
@@ -97,8 +99,8 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             if (comptime _shape.len - size == 0) {
                 return ScalarResult;
             }
-            const new_shape = comptime asSubArray(usize, shape_arr, size, shape_arr.len - 1);
-            const new_strides = comptime calculateStrides(new_shape);
+            const new_shape = comptime utils.asSubArray(usize, shape_arr, size, shape_arr.len - 1);
+            const new_strides = comptime utils.calculateStrides(new_shape);
             return InnerTensor(
                 dtype,
                 new_shape,
@@ -119,8 +121,8 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             if (comptime _shape.len - size == 0) {
                 return ScalarResult;
             }
-            const new_shape = comptime asSubArray(usize, shape_arr, size, shape_arr.len - 1);
-            const new_strides = comptime calculateStrides(new_shape);
+            const new_shape = comptime utils.asSubArray(usize, shape_arr, size, shape_arr.len - 1);
+            const new_strides = comptime utils.calculateStrides(new_shape);
             return InnerTensor(
                 dtype,
                 new_shape,
@@ -138,8 +140,8 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             if (comptime _shape.len - idxs.len == 0) {
                 return self.scalar(idxs);
             }
-            const strides_to_sub_tensor = comptime asSubVector(usize, self.strides, 0, idxs.len - 1);
-            const start_idx = getIndexAt(idxs, self.strides);
+            const strides_to_sub_tensor = comptime utils.asSubVector(usize, self.strides, 0, idxs.len - 1);
+            const start_idx = utils.getIndexAt(idxs, self.strides);
             const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
             return MutResult(idxs.len).init(self.data[start_idx..final_idx]);
         }
@@ -148,8 +150,8 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             if (comptime shape_arr.len - size == 0) {
                 return dtype;
             }
-            const new_shape = comptime asSubArray(usize, shape_arr, size, shape_arr.len - 1);
-            const new_strides = comptime calculateStrides(new_shape);
+            const new_shape = comptime utils.asSubArray(usize, shape_arr, size, shape_arr.len - 1);
+            const new_strides = comptime utils.calculateStrides(new_shape);
             return InnerTensor(
                 dtype,
                 new_shape,
@@ -165,21 +167,21 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
                 return CloneResult(0).init(&self.data);
             }
             if (comptime shape_arr.len - idxs.len == 0) {
-                return self.data[getIndexAt(idxs, self.strides)];
+                return self.data[utils.getIndexAt(idxs, self.strides)];
             }
-            const strides_to_sub_tensor = comptime asSubVector(usize, self.strides, 0, idxs.len - 1);
-            const start_idx = getIndexAt(idxs, self.strides);
+            const strides_to_sub_tensor = comptime utils.asSubVector(usize, self.strides, 0, idxs.len - 1);
+            const start_idx = utils.getIndexAt(idxs, self.strides);
             const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
             return CloneResult(idxs.len).init(self.data[start_idx..final_idx]);
         }
 
         fn stridesAreContiguous() bool {
-            const contiguous_strides: [strides_arr.len]usize = calculateStrides(shape_arr);
+            const contiguous_strides: [strides_arr.len]usize = utils.calculateStrides(shape_arr);
             return std.mem.eql(usize, &strides_arr, &contiguous_strides);
         }
 
         fn ReshapeResult(comptime shape: anytype) type {
-            return InnerTensor(dtype, shape, calculateStrides(shape), is_ref, readonly);
+            return InnerTensor(dtype, shape, utils.calculateStrides(shape), is_ref, readonly);
         }
 
         pub inline fn reshape(self: anytype, comptime shape: anytype) ReshapeResult(shape) {
@@ -244,18 +246,18 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
                 for (0..R) |j| {
                     var tmp: dtype = 0;
                     for (0..Q) |k| {
-                        const index_self = getIndexAt(.{ i, k }, self.strides);
-                        const index_other = getIndexAt(.{ k, j }, other.strides);
+                        const index_self = utils.getIndexAt(.{ i, k }, self.strides);
+                        const index_other = utils.getIndexAt(.{ k, j }, other.strides);
                         tmp += self.data[index_self] * other.data[index_other];
                     }
-                    const index_result = getIndexAt(.{ i, j }, result.strides);
+                    const index_result = utils.getIndexAt(.{ i, j }, result.strides);
                     result.data[index_result] = tmp;
                 }
             }
         }
 
         fn MatMulNewResult(other_shape: [shape_arr.len]usize) type {
-            const other_length = GetTypeLength(@TypeOf(other_shape));
+            const other_length = utils.GetTypeLength(@TypeOf(other_shape));
             if (other_length != 2 or shape_arr.len != 2) {
                 @compileError("Incompatible shape with matmul");
             }
@@ -270,7 +272,7 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             }
 
             const new_shape = comptime .{ P, R };
-            const new_strides = calculateStrides(new_shape);
+            const new_strides = utils.calculateStrides(new_shape);
             return InnerTensor(dtype, new_shape, new_strides, false, false);
         }
 
@@ -280,266 +282,9 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return result;
         }
 
-        pub inline fn convolution(self: anytype, kernel: anytype, result: anytype) void {
-            // Perform convolution
-            const kernel_strides = comptime asArray(usize, kernel.strides);
-            const result_strides = comptime asArray(usize, result.strides);
-            // Iterate over all output positions
-            var output_pos: [shape_arr.len]usize = .{0} ** shape_arr.len;
-            var pos: usize = 0;
-            while (pos < result.num_scalars) {
-                // Calculate output position from linear index
-                var temp_pos = pos;
-                for (0..shape_arr.len) |dim| {
-                    const stride = result_strides[dim];
-                    output_pos[dim] = temp_pos / stride;
-                    temp_pos = temp_pos % stride;
-                }
-                // Perform convolution at this position
-                var conv_sum: dtype = 0;
-                // Iterate over kernel positions
-                var kernel_pos: [kernel.shape.len]usize = .{0} ** kernel.shape.len;
-                var kernel_idx: usize = 0;
-                while (kernel_idx < kernel.num_scalars) {
-                    // Calculate kernel position from linear index
-                    var temp_kernel_idx = kernel_idx;
-                    for (0..kernel.shape.len) |dim| {
-                        const kernel_stride = kernel_strides[dim];
-                        kernel_pos[dim] = temp_kernel_idx / kernel_stride;
-                        temp_kernel_idx = temp_kernel_idx % kernel_stride;
-                    }
-                    // Calculate input position
-                    var input_pos: [shape_arr.len]usize = undefined;
-                    for (0..shape_arr.len) |dim| {
-                        if (kernel.shape[dim] == 1) {
-                            input_pos[dim] = output_pos[dim];
-                        } else {
-                            input_pos[dim] = output_pos[dim] + kernel_pos[dim];
-                        }
-                    }
-                    // Get input and kernel values
-                    const input_val = self.clone(input_pos);
-                    const kernel_val = kernel.clone(kernel_pos);
-                    // Accumulate convolution sum
-                    conv_sum += input_val * kernel_val;
-                    kernel_idx += 1;
-                }
-                // Store result
-                const result_idx = getIndexAt(output_pos, result.strides);
-                result.data[result_idx] = conv_sum;
-                pos += 1;
-            }
-        }
-
-        fn ConvolutionNewResult(kernel_shape: @Vector(shape_arr.len, usize)) type {
-            const kernel_shape_arr = comptime asArray(usize, kernel_shape);
-
-            // Calculate output shape for valid convolution
-            var output_shape: [shape_arr.len]usize = undefined;
-            for (0..shape_arr.len) |i| {
-                if (shape_arr[i] < kernel_shape_arr[i]) {
-                    @compileError("Input tensor dimension must be >= kernel dimension");
-                }
-                output_shape[i] = shape_arr[i] - kernel_shape_arr[i] + 1;
-            }
-
-            const output_strides = calculateStrides(output_shape);
-            return InnerTensor(dtype, output_shape, output_strides, false, false);
-        }
-
-        /// Perform N-D convolution and return a new tensor with the result.
-        pub inline fn convolutionNew(self: anytype, kernel: anytype) ConvolutionNewResult(kernel.shape) {
-            var result = ConvolutionNewResult(kernel.shape){ .data = undefined };
-            self.convolution(kernel, &result);
-            return result;
-        }
-
-        /// Perform N-D pooling with a custom aggregation function.
-        /// The kernel shape defines the pooling window size.
-        /// The aggregation function takes: (accumulator, kernel_index, current_value) -> new_accumulator
-        pub inline fn pooling(self: anytype, comptime kernel_shape: anytype, result: anytype, f: fn (dtype, usize, dtype) dtype) void {
-            const kernel_shape_arr = comptime asArray(usize, kernel_shape);
-
-            // Perform pooling
-            const result_strides = comptime asArray(usize, result.strides);
-
-            // Calculate total kernel size
-            const total_kernel_size = comptime @reduce(.Mul, @as(@Vector(kernel_shape.len, usize), kernel_shape));
-            // Iterate over all output positions
-            var output_pos: [shape_arr.len]usize = .{0} ** shape_arr.len;
-            var pos: usize = 0;
-
-            while (pos < result.num_scalars) {
-                // Calculate output position from linear index
-                var temp_pos = pos;
-                for (0..shape_arr.len) |dim| {
-                    const stride = result_strides[dim];
-                    output_pos[dim] = temp_pos / stride;
-                    temp_pos = temp_pos % stride;
-                }
-
-                // Perform pooling at this position
-                var accumulator: dtype = 0;
-                var kernel_idx: usize = 0;
-
-                // Iterate over kernel positions
-                var kernel_pos: [kernel_shape_arr.len]usize = .{0} ** kernel_shape_arr.len;
-                var kernel_linear_idx: usize = 0;
-
-                while (kernel_linear_idx < total_kernel_size) {
-                    // Calculate kernel position from linear index
-                    var temp_kernel_idx = kernel_linear_idx;
-                    for (0..kernel_shape_arr.len) |dim| {
-                        const kernel_stride = kernel_stride: {
-                            if (dim == kernel_shape_arr.len - 1) {
-                                break :kernel_stride 1;
-                            } else {
-                                var stride: usize = 1;
-                                for (dim + 1..kernel_shape_arr.len) |i| {
-                                    stride *= kernel_shape_arr[i];
-                                }
-                                break :kernel_stride stride;
-                            }
-                        };
-                        kernel_pos[dim] = temp_kernel_idx / kernel_stride;
-                        temp_kernel_idx = temp_kernel_idx % kernel_stride;
-                    }
-
-                    // Calculate input position
-                    var input_pos: [shape_arr.len]usize = undefined;
-                    for (0..shape_arr.len) |dim| {
-                        input_pos[dim] = output_pos[dim] + kernel_pos[dim];
-                    }
-
-                    // Get input value
-                    const input_val = self.clone(input_pos);
-
-                    // Apply aggregation function
-                    accumulator = @call(.always_inline, f, .{ accumulator, kernel_idx, input_val });
-
-                    kernel_linear_idx += 1;
-                    kernel_idx += 1;
-                }
-
-                // Store result
-                const result_idx = getIndexAt(output_pos, result.strides);
-                result.data[result_idx] = accumulator;
-
-                pos += 1;
-            }
-        }
-
-        fn PoolingNewResult(comptime kernel_shape: anytype) type {
-            const kernel_shape_arr = comptime asArray(usize, kernel_shape);
-
-            // Calculate output shape for valid pooling
-            var output_shape: [shape_arr.len]usize = undefined;
-            inline for (0..shape_arr.len) |i| {
-                if (shape_arr[i] < kernel_shape_arr[i]) {
-                    @compileError("Input tensor dimension must be >= kernel dimension");
-                }
-                output_shape[i] = shape_arr[i] - kernel_shape_arr[i] + 1;
-            }
-
-            const output_strides = calculateStrides(output_shape);
-            return InnerTensor(dtype, output_shape, output_strides, false, false);
-        }
-
-        /// Perform N-D pooling and return a new tensor with the result.
-        pub inline fn poolingNew(self: anytype, comptime kernel_shape: anytype, f: fn (dtype, usize, dtype) dtype) PoolingNewResult(kernel_shape) {
-            var result = PoolingNewResult(kernel_shape){ .data = undefined };
-            self.pooling(kernel_shape, &result, f);
-            return result;
-        }
-
-        /// Apply softmax function to the tensor with numerical stability.
-        /// Computes exp(x - max(x)) / sum(exp(x - max(x))) to avoid overflow.
-        pub inline fn softmax(self: anytype, result: anytype) void {
-            // Find the maximum value for numerical stability
-            var max_val: dtype = self.data[0];
-            for (1..self.num_scalars) |i| {
-                if (self.data[i] > max_val) {
-                    max_val = self.data[i];
-                }
-            }
-
-            // Compute exp(x - max_val) and sum
-            var sum: dtype = 0;
-            for (0..self.num_scalars) |i| {
-                const exp_val = @exp(self.data[i] - max_val);
-                result.data[i] = exp_val;
-                sum += exp_val;
-            }
-
-            // Normalize by sum
-            for (0..self.num_scalars) |i| {
-                result.data[i] /= sum;
-            }
-        }
-
-        /// Apply softmax function and return a new tensor with the result.
-        pub inline fn softmaxNew(self: anytype) WiseNewResult() {
-            var result = WiseNewResult(){ .data = undefined };
-            self.softmax(&result);
-            return result;
-        }
-
-        /// Apply softmax along a given axis (dimension).
-        /// For each slice along the axis, computes exp(x - max) / sum(exp(x - max)).
-        pub fn softmaxAxis(self: anytype, axis: usize, result: anytype) void {
-            if (axis >= shape_arr.len) @panic("Axis out of bounds");
-            const axis_len = shape_arr[axis];
-            var outer_size: usize = 1;
-            if (axis > 0) {
-                var i: usize = 0;
-                while (i < axis) : (i += 1) {
-                    outer_size *= shape_arr[i];
-                }
-            }
-            var inner_size: usize = 1;
-            if (axis < shape_arr.len - 1) {
-                var i: usize = axis + 1;
-                while (i < shape_arr.len) : (i += 1) {
-                    inner_size *= shape_arr[i];
-                }
-            }
-            var out_idx: usize = 0;
-            while (out_idx < outer_size) : (out_idx += 1) {
-                var in_idx: usize = 0;
-                while (in_idx < inner_size) : (in_idx += 1) {
-                    // Find max in this slice
-                    var max_val: dtype = self.data[out_idx * axis_len * inner_size + 0 * inner_size + in_idx];
-                    for (0..axis_len) |a| {
-                        const idx = out_idx * axis_len * inner_size + a * inner_size + in_idx;
-                        if (self.data[idx] > max_val) max_val = self.data[idx];
-                    }
-                    // Compute exp(x - max) and sum
-                    var sum: dtype = 0;
-                    for (0..axis_len) |a| {
-                        const idx = out_idx * axis_len * inner_size + a * inner_size + in_idx;
-                        const exp_val = @exp(self.data[idx] - max_val);
-                        result.data[idx] = exp_val;
-                        sum += exp_val;
-                    }
-                    // Normalize
-                    for (0..axis_len) |a| {
-                        const idx = out_idx * axis_len * inner_size + a * inner_size + in_idx;
-                        result.data[idx] /= sum;
-                    }
-                }
-            }
-        }
-
-        /// Apply axis-wise softmax and return a new tensor with the result.
-        pub fn softmaxAxisNew(self: anytype, axis: usize) WiseNewResult() {
-            var result = WiseNewResult(){ .data = undefined };
-            self.softmaxAxis(axis, &result);
-            return result;
-        }
-
         fn TransposeResult(comptime shuffled_axises: anytype) type {
             if (comptime shuffled_axises.len == 0) {
-                var mask = createSequence(usize, strides_arr.len);
+                var mask = utils.createSequence(usize, strides_arr.len);
                 const tmp = mask[strides_arr.len - 1];
                 mask[strides_arr.len - 1] = mask[strides_arr.len - 2];
                 mask[strides_arr.len - 2] = tmp;
@@ -609,72 +354,11 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
                     high_ranges_arr[i] = ranges[i][1] - 1;
                 }
                 break :idxs .{
-                    getIndexAt(low_ranges_arr, strides_arr),
-                    getIndexAt(high_ranges_arr, strides_arr),
+                    utils.getIndexAt(low_ranges_arr, strides_arr),
+                    utils.getIndexAt(high_ranges_arr, strides_arr),
                 };
             };
             return SliceResult(ranges).init(self.data[start_idx .. final_idx + 1]);
         }
     };
-}
-
-fn createSequence(comptime dtype: type, comptime n: usize) [n]dtype {
-    var seq: [n]dtype = .{1} ** n;
-    inline for (0..n) |i| {
-        seq[i] = i;
-    }
-    return seq;
-}
-
-fn GetTypeLength(comptime T: type) usize {
-    const type_info = @typeInfo(T);
-    const type_info_data = @field(type_info, @tagName(std.meta.activeTag(type_info)));
-    return if (comptime @hasField(@TypeOf(type_info_data), "len")) type_info_data.len else std.meta.fields(T).len;
-}
-
-fn asArray(comptime T: type, tuple: anytype) [GetTypeLength(@TypeOf(tuple))]T {
-    if (@typeInfo(T) == .array) return T;
-    const field_count = comptime GetTypeLength(@TypeOf(tuple));
-
-    var array: [field_count]T = undefined;
-    inline for (0..field_count) |i| {
-        array[i] = tuple[i];
-    }
-    return array;
-}
-
-fn asSubArray(comptime T: type, arr: anytype, start_idx: usize, end_idx: usize) [end_idx - start_idx + 1]T {
-    const size = end_idx - start_idx + 1;
-    var result: [size]T = undefined;
-    for (0..size) |i| {
-        result[i] = arr[start_idx + i];
-    }
-    return result;
-}
-
-fn asSubVector(comptime T: type, arr: anytype, start_idx: usize, end_idx: usize) @Vector(end_idx - start_idx + 1, T) {
-    const size = end_idx - start_idx + 1;
-    const seq_vec: @Vector(size, T) = createSequence(T, size);
-    const mask = seq_vec + @as(@Vector(size, T), @splat(start_idx));
-    return @shuffle(
-        usize,
-        arr,
-        undefined,
-        mask,
-    );
-}
-
-fn getIndexAt(idxs: anytype, comptime strides: anytype) usize {
-    const strides_to = comptime asSubVector(usize, strides, 0, idxs.len - 1);
-    const idxs_vec: @Vector(idxs.len, usize) = @bitCast(asArray(usize, idxs));
-    return @reduce(.Add, strides_to * idxs_vec);
-}
-
-fn calculateStrides(comptime shape: anytype) @Vector(shape.len, usize) {
-    var strides: [shape.len]usize = .{1} ** shape.len;
-    for (1..shape.len) |i| {
-        const idx = shape.len - i - 1;
-        strides[idx] = shape[idx + 1] * strides[idx + 1];
-    }
-    return strides;
 }
