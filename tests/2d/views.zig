@@ -3,6 +3,7 @@ const expectEqual = std.testing.expectEqual;
 const expect = std.testing.expect;
 const TensorView = @import("tensor").TensorView;
 const Tensor = @import("tensor").Tensor;
+const op = @import("tensor").op;
 
 fn createSequence(comptime dtype: type, comptime n: usize) [n]dtype {
     var seq: [n]dtype = .{1} ** n;
@@ -132,7 +133,7 @@ pub const VIEWS_2D = struct {
         var result_data: [6]f64 = .{0} ** 6;
         var result = Tensor(f64, .{ 2, 2 }).init(result_data[0..]);
 
-        view1.matmul(&view2, &result);
+        op.matmul(&view1, &view2, &result);
 
         try expectEqual(10, result.clone(.{ 0, 0 }));
         try expectEqual(13, result.clone(.{ 0, 1 }));
@@ -181,4 +182,4 @@ pub const VIEWS_2D = struct {
         try expectEqual(data[2], reshaped.scalar(.{2}));
         try expectEqual(data[3], reshaped.scalar(.{3}));
     }
-}; 
+};

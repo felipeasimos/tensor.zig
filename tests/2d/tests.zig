@@ -3,6 +3,7 @@ const expectEqual = std.testing.expectEqual;
 const expect = std.testing.expect;
 const TensorView = @import("tensor").TensorView;
 const Tensor = @import("tensor").Tensor;
+const op = @import("tensor").op;
 
 fn createSequence(comptime dtype: type, comptime n: usize) [n]dtype {
     var seq: [n]dtype = .{1} ** n;
@@ -92,7 +93,7 @@ pub const TENSOR_2D = struct {
 
         var data3: [6]f64 = createSequence(f64, 6);
         var result = Tensor(f64, .{ 3, 2 }).init(&data3);
-        tensor1.matmul(&tensor2, &result);
+        op.matmul(&tensor1, &tensor2, &result);
         try expectEqual(result.shape, [_]usize{ 3, 2 });
     }
     test "matmulNew 3x4 4x2" {

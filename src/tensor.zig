@@ -1,5 +1,6 @@
 const std = @import("std");
 const utils = @import("utils.zig");
+pub const op = @import("op.zig");
 
 /// OwnedTensor owns the underlying tensor data and can make changes to it
 /// read-only tensor view can be accessed with the `view()` method
@@ -15,7 +16,7 @@ pub fn TensorView(comptime dtype: type, comptime _shape: anytype) type {
     return InnerTensor(dtype, _shape, utils.calculateStrides(_shape), true, true);
 }
 
-fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides: anytype, comptime is_ref: bool, comptime readonly: bool) type {
+pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides: anytype, comptime is_ref: bool, comptime readonly: bool) type {
     const dtype_info = @typeInfo(dtype);
 
     if (dtype_info != .float and dtype_info != .int) {
@@ -234,51 +235,9 @@ fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides
             return result;
         }
 
-        pub inline fn matmul(self: anytype, other: anytype, result: anytype) void {
-            // (P, Q) x (Q, R) -> (P, R)
-            const P = comptime shape_arr[0];
-            const Q = comptime shape_arr[1];
-            const R = comptime other.shape[1];
-            if (comptime (result.shape[0] != P or result.shape[1] != R or other.shape[0] != Q)) {
-                @compileError(std.fmt.comptimePrint("Number of columns don't match with number of rows: {any} x {any} -> {any}", .{ self.shape, other.shape, result.shape }));
-            }
-            for (0..P) |i| {
-                for (0..R) |j| {
-                    var tmp: dtype = 0;
-                    for (0..Q) |k| {
-                        const index_self = utils.getIndexAt(.{ i, k }, self.strides);
-                        const index_other = utils.getIndexAt(.{ k, j }, other.strides);
-                        tmp += self.data[index_self] * other.data[index_other];
-                    }
-                    const index_result = utils.getIndexAt(.{ i, j }, result.strides);
-                    result.data[index_result] = tmp;
-                }
-            }
-        }
-
-        fn MatMulNewResult(other_shape: [shape_arr.len]usize) type {
-            const other_length = utils.GetTypeLength(@TypeOf(other_shape));
-            if (other_length != 2 or shape_arr.len != 2) {
-                @compileError("Incompatible shape with matmul");
-            }
-
-            // (P, Q1) x (Q2, R) -> (P, R)
-            const P = shape_arr[0];
-            const Q1 = shape_arr[1];
-            const Q2 = other_shape[0];
-            const R = other_shape[1];
-            if (Q1 != Q2) {
-                @compileError(std.fmt.comptimePrint("Number of columns don't match with number of rows: {any} x {any}", .{ shape_arr, other_shape }));
-            }
-
-            const new_shape = comptime .{ P, R };
-            const new_strides = utils.calculateStrides(new_shape);
-            return InnerTensor(dtype, new_shape, new_strides, false, false);
-        }
-
-        pub inline fn matmulNew(self: anytype, other: anytype) MatMulNewResult(other.shape) {
-            var result = MatMulNewResult(other.shape){ .data = undefined };
-            self.matmul(other, &result);
+        pub inline fn matmulNew(a: anytype, b: anytype) op.MatMulNewResult(a.dtype, a.shape, b.shape) {
+            var result = op.MatMulNewResult(a.dtype, a.shape, b.shape){ .data = undefined };
+            op.matmul(a, b, &result);
             return result;
         }
 

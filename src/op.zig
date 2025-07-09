@@ -1,10 +1,8 @@
 const std = @import("std");
 const utils = @import("./utils.zig");
+const tensor = @import("tensor.zig");
 
 pub inline fn matmul(a: anytype, b: anytype, result: anytype) void {
-    if (comptime a.dtype != b.dtype) {
-        @compileError("types don't match");
-    }
     // (P, Q) x (Q, R) -> (P, R)
     const P = comptime a.shape[0];
     const Q = comptime a.shape[1];
@@ -26,28 +24,28 @@ pub inline fn matmul(a: anytype, b: anytype, result: anytype) void {
     }
 }
 
-fn MatMulNewResult(other_shape: [shape_arr.len]usize) type {
-    const other_length = GetTypeLength(@TypeOf(other_shape));
-    if (other_length != 2 or shape_arr.len != 2) {
+pub fn MatMulNewResult(dtype: type, a_shape: anytype, b_shape: anytype) type {
+    const b_length = utils.GetTypeLength(@TypeOf(b_shape));
+    if (b_length != 2 or a_shape.len != 2) {
         @compileError("Incompatible shape with matmul");
     }
 
     // (P, Q1) x (Q2, R) -> (P, R)
-    const P = shape_arr[0];
-    const Q1 = shape_arr[1];
-    const Q2 = other_shape[0];
-    const R = other_shape[1];
+    const P = a_shape[0];
+    const Q1 = a_shape[1];
+    const Q2 = b_shape[0];
+    const R = b_shape[1];
     if (Q1 != Q2) {
-        @compileError(std.fmt.comptimePrint("Number of columns don't match with number of rows: {any} x {any}", .{ shape_arr, other_shape }));
+        @compileError(std.fmt.comptimePrint("Number of columns don't match with number of rows: {any} x {any}", .{ a_shape, b_shape }));
     }
 
     const new_shape = comptime .{ P, R };
-    const new_strides = calculateStrides(new_shape);
-    return InnerTensor(dtype, new_shape, new_strides, false, false);
+    const new_strides = utils.calculateStrides(new_shape);
+    return tensor.InnerTensor(dtype, new_shape, new_strides, false, false);
 }
 
-pub inline fn matmulNew(self: anytype, other: anytype) MatMulNewResult(other.shape) {
-    var result = MatMulNewResult(other.shape){ .data = undefined };
-    self.matmul(other, &result);
+pub inline fn matmulNew(a: anytype, b: anytype) MatMulNewResult(b.shape) {
+    var result = MatMulNewResult(a.dtype, a.shape, b.shape){ .data = undefined };
+    matmul(a, b, &result);
     return result;
 }
