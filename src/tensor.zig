@@ -1,6 +1,7 @@
 const std = @import("std");
 const utils = @import("utils.zig");
 pub const op = @import("op.zig");
+pub const func = @import("func.zig");
 
 /// OwnedTensor owns the underlying tensor data and can make changes to it
 /// read-only tensor view can be accessed with the `view()` method
@@ -82,7 +83,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             return new;
         }
 
-        pub fn zeroesNew() @This() {
+        pub fn zeroes() @This() {
             var new: @This() = undefined;
             @memset(&new.data, 0);
             return new;
