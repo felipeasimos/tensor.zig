@@ -64,18 +64,21 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         pub fn randomize(self: anytype, rand: std.Random) void {
             switch (@typeInfo(dtype)) {
                 .comptime_int, .int => {
-                    for (0..self.data.len) |i| {
-                        self.data[i] = rand.int(dtype);
-                    }
+                    self.apply((struct {
+                        pub fn func(_: dtype) dtype {
+                            return rand.int(dtype);
+                        }
+                    }).func);
                 },
                 .comptime_float, .float => {
-                    for (0..self.data.len) |i| {
-                        self.data[i] = rand.floatNorm(dtype);
-                    }
+                    self.apply((struct {
+                        pub fn func(_: dtype) dtype {
+                            return rand.floatNorm(dtype);
+                        }
+                    }).func);
                 },
                 else => @compileError("invalid dtype"),
             }
-            rand.bytes(std.mem.asBytes(self.data[0..]));
         }
 
         pub fn init(data: []dtype) @This() {
@@ -117,10 +120,16 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         pub inline fn view(self: anytype, idxs: anytype) ViewResult(idxs.len) {
-            if (comptime is_ref) {
-                return ViewResult(idxs.len).init(self.data);
+            if (comptime idxs.len == 0) {
+                return ViewResult(0).init(self.data[0..]);
             }
-            return ViewResult(idxs.len).init(@as([]dtype, self.data[0..]));
+            if (comptime _shape.len - idxs.len == 0) {
+                return self.scalar(idxs);
+            }
+            const strides_to_sub_tensor = comptime utils.asSubVector(usize, self.strides, 0, idxs.len - 1);
+            const start_idx = utils.getIndexAt(idxs, self.strides);
+            const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
+            return ViewResult(idxs.len).init(@as([]dtype, self.data[start_idx..final_idx]));
         }
 
         fn MutResult(comptime size: usize) type {
@@ -212,8 +221,16 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         pub inline fn copy(self: anytype, from: anytype) void {
-            for (0..self.num_scalars) |i| {
-                self.data[i] = from.data[i];
+            if (comptime self.strides_are_contiguous) {
+                for (0..self.num_scalars) |i| {
+                    self.data[i] = from.data[i];
+                }
+            } else {
+                var it = self.indicesIter();
+                while (it.next()) |indices| {
+                    const data_idx = utils.getIndexAt(indices, strides_arr);
+                    self.data[data_idx] = from.data[data_idx];
+                }
             }
         }
 
@@ -226,18 +243,30 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                     self.data[i] = f(self.data[i]);
                 }
             } else {
-                var it = self.iter();
-                while (it.next()) |item| {
-                    const data_idx = utils.getIndexAt(item.indices, strides_arr);
+                var it = self.indicesiter();
+                while (it.next()) |indices| {
+                    const data_idx = utils.getIndexAt(indices, strides_arr);
                     self.data[data_idx] = f(self.data[data_idx]);
                 }
             }
         }
 
         pub inline fn wise(self: anytype, other: anytype, result: anytype, f: fn (dtype, dtype) dtype) void {
-            for (0..self.num_scalars) |i| {
-                const other_value = otherValue(other, i);
-                result.data[i] = f(self.data[i], other_value);
+            if (comptime self.strides_are_contiguous) {
+                for (0..self.num_scalars) |i| {
+                    const other_value = otherValue(other, i);
+                    result.data[i] = f(self.data[i], other_value);
+                }
+            } else {
+                var self_it = self.indicesiter();
+                var other_it = other.indicesIter();
+                while (true) {
+                    const self_idx = self_it.next();
+                    const other_idx = other_it.next();
+                    if (self_idx == null or other_idx == null) break;
+                    const other_value = otherValue(other, other_idx.?);
+                    result.data[self_idx.?] = f(self.data[other_idx.?], other_value);
+                }
             }
         }
 
