@@ -50,7 +50,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         comptime is_reference: bool = is_ref,
         comptime is_view: bool = _is_view,
         comptime is_readonly: bool = readonly,
-        comptime scalar_type: type = ScalarResult,
+        comptime ScalarType: type = ScalarResult,
 
         data: DataSequenceType,
 
@@ -217,8 +217,13 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         pub inline fn apply(self: anytype, f: fn (dtype) dtype) void {
-            for (0..self.num_scalars) |i| {
-                self.data[i] = f(self.data[i]);
+            if (comptime readonly) {
+                @compileError("Cannot apply function to readonly tensor");
+            }
+            var it = self.iter();
+            while (it.next()) |item| {
+                const data_idx = utils.getIndexAt(item.indices, strides_arr);
+                self.data[data_idx] = f(self.data[data_idx]);
             }
         }
 
@@ -355,7 +360,16 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         pub inline fn broadcast(self: anytype, comptime target_shape: anytype) BroadcastResult(target_shape) {
             return BroadcastResult(target_shape).init(self.data);
         }
-        pub fn iter(self: *const @This()) iterator.Iterator(@This()) {
+
+        pub fn indicesIter() iterator.IndicesIterator(@This()) {
+            return iterator.IndicesIterator(@This()).init();
+        }
+
+        pub fn dataIter(self: anytype) iterator.DataIterator(@This()) {
+            return iterator.DataIterator(@This()).init(self);
+        }
+
+        pub fn iter(self: anytype) iterator.Iterator(@This()) {
             return iterator.Iterator(@This()).init(self);
         }
     };
