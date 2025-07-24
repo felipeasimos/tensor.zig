@@ -25,7 +25,7 @@ pub fn Iterator(comptime TensorType: type) type {
             };
         }
 
-        pub fn next(self: *Self) ?struct { indices: @TypeOf(shape_arr), value: ScalarType } {
+        pub inline fn next(self: *Self) ?struct { indices: @TypeOf(shape_arr), value: ScalarType } {
             if (self.finished) return null;
 
             const current_idx = self.current_indices;

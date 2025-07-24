@@ -51,6 +51,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         comptime is_view: bool = _is_view,
         comptime is_readonly: bool = readonly,
         comptime ScalarType: type = ScalarResult,
+        comptime strides_are_contiguous: bool = stridesAreContiguous(),
 
         data: DataSequenceType,
 
@@ -190,7 +191,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         pub inline fn reshape(self: anytype, comptime shape: anytype) ReshapeResult(shape) {
-            if (comptime !stridesAreContiguous()) {
+            if (comptime !self.strides_are_contiguous) {
                 @compileError("Can't reshape a tensor without contiguous strides");
             }
             const result = ReshapeResult(shape).init(self.data[0..]);
@@ -220,10 +221,16 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             if (comptime readonly) {
                 @compileError("Cannot apply function to readonly tensor");
             }
-            var it = self.iter();
-            while (it.next()) |item| {
-                const data_idx = utils.getIndexAt(item.indices, strides_arr);
-                self.data[data_idx] = f(self.data[data_idx]);
+            if (comptime self.strides_are_contiguous) {
+                for (0..self.num_scalars) |i| {
+                    self.data[i] = f(self.data[i]);
+                }
+            } else {
+                var it = self.iter();
+                while (it.next()) |item| {
+                    const data_idx = utils.getIndexAt(item.indices, strides_arr);
+                    self.data[data_idx] = f(self.data[data_idx]);
+                }
             }
         }
 
@@ -305,7 +312,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             if (comptime !validateRanges(ranges)) {
                 @compileError("Invalid slicing ranges");
             }
-            if (comptime !stridesAreContiguous()) {
+            if (comptime !self.strides_are_contiguous) {
                 @compileError("Can't slice a tensor without contiguous strides");
             }
             const start_idx, const final_idx = comptime idxs: {
