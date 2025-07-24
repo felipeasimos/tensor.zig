@@ -259,4 +259,47 @@ pub const TENSOR_2D = struct {
         try expectEqual(1, broadcasted.scalar(.{ 3, 0, 0 }));
         try expectEqual(4, broadcasted.scalar(.{ 3, 1, 0 }));
     }
+    test "iterator basic 2x2" {
+        var data: [4]f64 = .{ 1, 2, 3, 4 };
+        var tensor = TensorView(f64, .{ 2, 2 }).init(data[0..]);
+        var iter = tensor.iter();
+
+        var count: usize = 0;
+        while (iter.next()) |item| {
+            count += 1;
+            switch (count) {
+                1 => {
+                    try expectEqual(.{ 0, 0 }, item.indices);
+                    try expectEqual(1, item.value);
+                },
+                2 => {
+                    try expectEqual(.{ 0, 1 }, item.indices);
+                    try expectEqual(2, item.value);
+                },
+                3 => {
+                    try expectEqual(.{ 1, 0 }, item.indices);
+                    try expectEqual(3, item.value);
+                },
+                4 => {
+                    try expectEqual(.{ 1, 1 }, item.indices);
+                    try expectEqual(4, item.value);
+                },
+                else => unreachable,
+            }
+        }
+        try expectEqual(4, count);
+    }
+    test "iterator broadcasted tensor" {
+        var data: [1]f64 = .{42};
+        var tensor = TensorView(f64, .{ 1, 1 }).init(data[0..]);
+        const broadcasted = tensor.broadcast(.{ 2, 3 });
+        var iter = broadcasted.iter();
+
+        var count: usize = 0;
+        while (iter.next()) |item| {
+            count += 1;
+            try expectEqual(42, item.value);
+        }
+        try expectEqual(6, count);
+    }
 };

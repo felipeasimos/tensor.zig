@@ -172,4 +172,30 @@ pub const TENSOR_1D = struct {
         try expectEqual(2, broadcasted.scalar(.{ 1, 3, 1 }));
         try expectEqual(3, broadcasted.scalar(.{ 1, 3, 2 }));
     }
+    test "iterator basic 1D" {
+        var data: [3]f64 = .{ 5, 10, 15 };
+        var tensor = TensorView(f64, .{3}).init(data[0..]);
+        var iter = tensor.iter();
+
+        var count: usize = 0;
+        while (iter.next()) |item| {
+            count += 1;
+            switch (count) {
+                1 => {
+                    try expectEqual(.{0}, item.indices);
+                    try expectEqual(5, item.value);
+                },
+                2 => {
+                    try expectEqual(.{1}, item.indices);
+                    try expectEqual(10, item.value);
+                },
+                3 => {
+                    try expectEqual(.{2}, item.indices);
+                    try expectEqual(15, item.value);
+                },
+                else => unreachable,
+            }
+        }
+        try expectEqual(3, count);
+    }
 };

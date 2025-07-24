@@ -2,6 +2,7 @@ const std = @import("std");
 const utils = @import("utils.zig");
 pub const op = @import("op.zig");
 pub const func = @import("func.zig");
+pub const iterator = @import("iterator.zig");
 
 /// OwnedTensor owns the underlying tensor data and can make changes to it
 /// read-only tensor view can be accessed with the `view()` method
@@ -48,6 +49,8 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         comptime num_scalars: usize = total_num_scalars,
         comptime is_reference: bool = is_ref,
         comptime is_view: bool = _is_view,
+        comptime is_readonly: bool = readonly,
+        comptime scalar_type: type = ScalarResult,
 
         data: DataSequenceType,
 
@@ -351,6 +354,9 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
 
         pub inline fn broadcast(self: anytype, comptime target_shape: anytype) BroadcastResult(target_shape) {
             return BroadcastResult(target_shape).init(self.data);
+        }
+        pub fn iter(self: *const @This()) iterator.Iterator(@This()) {
+            return iterator.Iterator(@This()).init(self);
         }
     };
 }
