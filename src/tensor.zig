@@ -314,5 +314,43 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             };
             return SliceResult(ranges).init(self.data[start_idx .. final_idx + 1]);
         }
+
+        fn BroadcastResult(comptime target_shape: anytype) type {
+            const target_arr = utils.asArray(usize, target_shape);
+            const new_strides = calculateBroadcastStrides(target_shape);
+            return InnerTensor(dtype, target_arr, new_strides, true, readonly);
+        }
+
+        fn calculateBroadcastStrides(comptime target_shape: anytype) @Vector(target_shape.len, usize) {
+            const target_arr = utils.asArray(usize, target_shape);
+            var new_strides: [target_arr.len]usize = undefined;
+
+            if (target_arr.len < shape_arr.len) {
+                @compileError("Target shape must have at least as many dimensions as source shape");
+            }
+
+            const shape_offset = target_arr.len - shape_arr.len;
+
+            for (0..target_arr.len) |i| {
+                if (i < shape_offset) {
+                    new_strides[i] = 0;
+                } else {
+                    const orig_dim = i - shape_offset;
+                    if (shape_arr[orig_dim] == 1 and target_arr[i] > 1) {
+                        new_strides[i] = 0;
+                    } else if (shape_arr[orig_dim] == target_arr[i]) {
+                        new_strides[i] = strides_arr[orig_dim];
+                    } else {
+                        @compileError("Invalid broadcast: incompatible dimensions");
+                    }
+                }
+            }
+
+            return new_strides;
+        }
+
+        pub inline fn broadcast(self: anytype, comptime target_shape: anytype) BroadcastResult(target_shape) {
+            return BroadcastResult(target_shape).init(self.data);
+        }
     };
 }
