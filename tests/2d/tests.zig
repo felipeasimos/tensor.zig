@@ -204,4 +204,59 @@ pub const TENSOR_2D = struct {
         try expectEqual(30, tensor2.clone(.{ 1, 0 }));
         try expectEqual(40, tensor2.clone(.{ 1, 1 }));
     }
+    test "broadcast 2D [1,3] to [2,3]" {
+        var data: [3]f64 = .{ 1, 2, 3 };
+        var tensor = TensorView(f64, .{ 1, 3 }).init(data[0..]);
+        const broadcasted = tensor.broadcast(.{ 2, 3 });
+
+        try expectEqual(.{ 2, 3 }, broadcasted.shape);
+        try expectEqual(.{ 0, 1 }, broadcasted.strides);
+        try expectEqual(1, broadcasted.scalar(.{ 0, 0 }));
+        try expectEqual(2, broadcasted.scalar(.{ 0, 1 }));
+        try expectEqual(3, broadcasted.scalar(.{ 0, 2 }));
+        try expectEqual(1, broadcasted.scalar(.{ 1, 0 }));
+        try expectEqual(2, broadcasted.scalar(.{ 1, 1 }));
+        try expectEqual(3, broadcasted.scalar(.{ 1, 2 }));
+    }
+    test "broadcast 2D [2,1] to [2,4]" {
+        var data: [2]f64 = .{ 10, 20 };
+        var tensor = TensorView(f64, .{ 2, 1 }).init(data[0..]);
+        const broadcasted = tensor.broadcast(.{ 2, 4 });
+
+        try expectEqual(.{ 2, 4 }, broadcasted.shape);
+        try expectEqual(.{ 1, 0 }, broadcasted.strides);
+        try expectEqual(10, broadcasted.scalar(.{ 0, 0 }));
+        try expectEqual(10, broadcasted.scalar(.{ 0, 1 }));
+        try expectEqual(10, broadcasted.scalar(.{ 0, 2 }));
+        try expectEqual(10, broadcasted.scalar(.{ 0, 3 }));
+        try expectEqual(20, broadcasted.scalar(.{ 1, 0 }));
+        try expectEqual(20, broadcasted.scalar(.{ 1, 1 }));
+        try expectEqual(20, broadcasted.scalar(.{ 1, 2 }));
+        try expectEqual(20, broadcasted.scalar(.{ 1, 3 }));
+    }
+    test "broadcast 2D [1,1] to [3,4]" {
+        var data: [1]f64 = .{99};
+        var tensor = TensorView(f64, .{ 1, 1 }).init(data[0..]);
+        const broadcasted = tensor.broadcast(.{ 3, 4 });
+
+        try expectEqual(.{ 3, 4 }, broadcasted.shape);
+        try expectEqual(.{ 0, 0 }, broadcasted.strides);
+        try expectEqual(99, broadcasted.scalar(.{ 0, 0 }));
+        try expectEqual(99, broadcasted.scalar(.{ 0, 3 }));
+        try expectEqual(99, broadcasted.scalar(.{ 2, 0 }));
+        try expectEqual(99, broadcasted.scalar(.{ 2, 3 }));
+    }
+    test "broadcast 2D to 3D" {
+        var data: [6]f64 = .{ 1, 2, 3, 4, 5, 6 };
+        var tensor = TensorView(f64, .{ 2, 3 }).init(data[0..]);
+        const broadcasted = tensor.broadcast(.{ 4, 2, 3 });
+
+        try expectEqual(.{ 4, 2, 3 }, broadcasted.shape);
+        try expectEqual(.{ 0, 3, 1 }, broadcasted.strides);
+        try expectEqual(1, broadcasted.scalar(.{ 0, 0, 0 }));
+        try expectEqual(2, broadcasted.scalar(.{ 0, 0, 1 }));
+        try expectEqual(4, broadcasted.scalar(.{ 0, 1, 0 }));
+        try expectEqual(1, broadcasted.scalar(.{ 3, 0, 0 }));
+        try expectEqual(4, broadcasted.scalar(.{ 3, 1, 0 }));
+    }
 };

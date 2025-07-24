@@ -133,4 +133,43 @@ pub const TENSOR_1D = struct {
         try expectEqual(20, tensor2.clone(.{1}));
         try expectEqual(30, tensor2.clone(.{2}));
     }
+    test "broadcast 1D size 1 to size 3" {
+        var data: [1]f64 = .{42};
+        var tensor = TensorView(f64, .{1}).init(data[0..]);
+        const broadcasted = tensor.broadcast(.{3});
+
+        try expectEqual(.{3}, broadcasted.shape);
+        try expectEqual(.{0}, broadcasted.strides);
+        try expectEqual(42, broadcasted.scalar(.{0}));
+        try expectEqual(42, broadcasted.scalar(.{1}));
+        try expectEqual(42, broadcasted.scalar(.{2}));
+    }
+    test "broadcast 1D to 2D" {
+        var data: [1]f64 = .{5};
+        var tensor = TensorView(f64, .{1}).init(data[0..]);
+        const broadcasted = tensor.broadcast(.{ 2, 3 });
+
+        try expectEqual(.{ 2, 3 }, broadcasted.shape);
+        try expectEqual(.{ 0, 0 }, broadcasted.strides);
+        try expectEqual(5, broadcasted.scalar(.{ 0, 0 }));
+        try expectEqual(5, broadcasted.scalar(.{ 0, 1 }));
+        try expectEqual(5, broadcasted.scalar(.{ 0, 2 }));
+        try expectEqual(5, broadcasted.scalar(.{ 1, 0 }));
+        try expectEqual(5, broadcasted.scalar(.{ 1, 1 }));
+        try expectEqual(5, broadcasted.scalar(.{ 1, 2 }));
+    }
+    test "broadcast 1D to 3D" {
+        var data: [3]f64 = .{ 1, 2, 3 };
+        var tensor = TensorView(f64, .{3}).init(data[0..]);
+        const broadcasted = tensor.broadcast(.{ 2, 4, 3 });
+
+        try expectEqual(.{ 2, 4, 3 }, broadcasted.shape);
+        try expectEqual(.{ 0, 0, 1 }, broadcasted.strides);
+        try expectEqual(1, broadcasted.scalar(.{ 0, 0, 0 }));
+        try expectEqual(2, broadcasted.scalar(.{ 0, 0, 1 }));
+        try expectEqual(3, broadcasted.scalar(.{ 0, 0, 2 }));
+        try expectEqual(1, broadcasted.scalar(.{ 1, 3, 0 }));
+        try expectEqual(2, broadcasted.scalar(.{ 1, 3, 1 }));
+        try expectEqual(3, broadcasted.scalar(.{ 1, 3, 2 }));
+    }
 };
