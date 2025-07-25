@@ -62,22 +62,34 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         pub fn randomize(self: anytype, rand: std.Random) void {
-            switch (@typeInfo(dtype)) {
-                .comptime_int, .int => {
-                    self.apply((struct {
-                        pub fn func(_: dtype) dtype {
-                            return rand.int(dtype);
-                        }
-                    }).func);
-                },
-                .comptime_float, .float => {
-                    self.apply((struct {
-                        pub fn func(_: dtype) dtype {
-                            return rand.floatNorm(dtype);
-                        }
-                    }).func);
-                },
+            const sampler = comptime switch (@typeInfo(dtype)) {
+                .comptime_int, .int => struct {
+                    inline fn sample(r: std.Random) dtype {
+                        return r.int(dtype);
+                    }
+                }.sample,
+                .comptime_float, .float => struct {
+                    inline fn sample(r: std.Random) dtype {
+                        // For uniform:
+                        return r.float(dtype);
+                        // Or, for normal:
+                        // var n = std.rand.Normal(dtype).init(r);
+                        // return n.sample();
+                    }
+                }.sample,
                 else => @compileError("invalid dtype"),
+            };
+
+            if (comptime self.strides_are_contiguous) {
+                for (0..self.num_scalars) |i| {
+                    self.data[i] = sampler(rand);
+                }
+            } else {
+                var it = self.indicesiter();
+                while (it.next()) |indices| {
+                    const idx = utils.getIndexAt(indices, strides_arr);
+                    self.data[idx] = sampler(rand);
+                }
             }
         }
 

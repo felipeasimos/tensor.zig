@@ -92,3 +92,4 @@ const sub = func.subFactory(f64);
 const mul = func.mulFactory(f64);
 const div = func.divFactory(f64);
 ```
+
