@@ -14,10 +14,10 @@ test {
     std.testing.refAllDeclsRecursive(tensor_1d);
     std.testing.refAllDeclsRecursive(tensor_2d);
     std.testing.refAllDeclsRecursive(tensor_3d);
-    // std.testing.refAllDeclsRecursive(views_1d);
-    // std.testing.refAllDeclsRecursive(views_2d);
-    // std.testing.refAllDeclsRecursive(views_3d);
-    // std.testing.refAllDeclsRecursive(refs_1d);
-    // std.testing.refAllDeclsRecursive(refs_2d);
-    // std.testing.refAllDeclsRecursive(refs_3d);
+    std.testing.refAllDeclsRecursive(views_1d);
+    std.testing.refAllDeclsRecursive(views_2d);
+    std.testing.refAllDeclsRecursive(views_3d);
+    std.testing.refAllDeclsRecursive(refs_1d);
+    std.testing.refAllDeclsRecursive(refs_2d);
+    std.testing.refAllDeclsRecursive(refs_3d);
 }
