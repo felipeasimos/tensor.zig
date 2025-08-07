@@ -60,7 +60,7 @@ pub const VIEWS_2D = struct {
         const view2 = tensor2.view(.{});
         var result = Tensor(f64, .{ 2, 2 }).init(data1[0..]);
 
-        view1.wise(&view2, &result, (struct {
+        view1.wise(.{&view2}, (struct {
             pub fn func(a: f64, b: f64) f64 {
                 return a + b;
             }

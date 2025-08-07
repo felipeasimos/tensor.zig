@@ -92,7 +92,7 @@ pub const REFS_3D = struct {
         const tensor2_ref = &tensor2;
         var result = Tensor(f64, .{ 2, 2, 2 }).init(data1[0..]);
 
-        tensor1_ref.wise(tensor2_ref, &result, (struct {
+        tensor1_ref.wise(.{tensor2_ref}, (struct {
             pub fn func(a: f64, b: f64) f64 {
                 return a + b;
             }
@@ -131,4 +131,4 @@ pub const REFS_3D = struct {
         try expectEqual(77, result.clone(.{ 1, 1, 0 }));
         try expectEqual(88, result.clone(.{ 1, 1, 1 }));
     }
-}; 
+};

@@ -63,7 +63,7 @@ pub const REFS_1D = struct {
         const tensor2_ref = &tensor2;
         var result = Tensor(f64, .{3}).init(data1[0..]);
 
-        tensor1_ref.wise(tensor2_ref, &result, func.addFactory(f64));
+        tensor1_ref.wise(.{tensor2_ref}, func.addFactory(f64));
 
         try expectEqual(10, result.clone(.{0}));
         try expectEqual(21, result.clone(.{1}));
