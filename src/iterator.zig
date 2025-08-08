@@ -1,6 +1,6 @@
 const utils = @import("utils.zig");
 
-pub inline fn incrementIndices(iter: anytype, comptime shape_arr: anytype) void {
+inline fn incrementIndices(iter: anytype, comptime shape_arr: anytype) void {
     inline for (0..shape_arr.len) |rev_i| {
         const dim = shape_arr.len - 1 - rev_i;
         iter.current_indices[dim] += 1;
@@ -131,6 +131,32 @@ pub fn DataRefIterator(comptime TensorType: type) type {
             incrementIndices(self, shape_arr);
             const data_idx = utils.getIndexAt(current_idx, strides_arr);
             return &self.tensor.data[data_idx];
+        }
+    };
+}
+
+pub fn SubTensorIterator(comptime TensorType: type) type {
+    const T = utils.getChildType(TensorType);
+    const shape_arr = utils.getComptimeFieldValue(T, "shape").?;
+
+    return struct {
+        const Self = @This();
+
+        tensor: *T,
+        current_index: usize = 0,
+
+        pub fn init(tensor: *T) Self {
+            return Self{
+                .tensor = tensor,
+            };
+        }
+
+        pub fn next(self: *Self) ?@TypeOf(self.tensor.ref(.{0})) {
+            if (self.current_index >= shape_arr[0]) return null;
+
+            const current_idx = self.current_index;
+            self.current_index += 1;
+            return self.tensor.ref(.{current_idx});
         }
     };
 }

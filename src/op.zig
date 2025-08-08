@@ -60,3 +60,20 @@ pub inline fn wise(tensors: anytype, f: anytype) WiseResult(@TypeOf(f), @TypeOf(
     result.wise(tensors, f);
     return result;
 }
+
+// fn ReduceResult(comptime FnType: type, comptime tensorsType: type) type {
+//     const Dtype = @typeInfo(FnType).@"fn".return_type.?;
+//     const length = utils.getTypeLength(tensorsType);
+//     for (0..length) |i| {
+//         const index_as_str = std.fmt.comptimePrint("{}", .{i});
+//         const T = utils.getChildType(@FieldType(tensorsType, index_as_str));
+//         if (isTensor(T)) {
+//             const shape = utils.getComptimeFieldValue(T, "shape").?;
+//             const strides = utils.calculateStrides(shape);
+//             return tensor.InnerTensor(Dtype, shape, strides, false);
+//         }
+//     }
+//     @compileError("At least one of the arguments must be a tensor");
+// }
+//
+// pub inline fn reduce(initial: anytype, tensors: anytype, f: anytype) ReduceResult {}
