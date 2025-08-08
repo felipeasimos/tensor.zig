@@ -349,7 +349,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 const T = @FieldType(tensorsType, index_as_str);
                 if (comptime op.isTensor(utils.getChildType(T))) {
                     const TensorType = utils.getChildType(T);
-                    types[i] = TensorType;
+                    types[i] = TensorType.RefResult(1);
                 } else {
                     types[i] = T;
                 }
@@ -357,7 +357,8 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             return std.meta.Tuple(&types);
         }
 
-        pub inline fn reduce(self: *@This(), initial: dtype, tuple: anytype, f: anytype) void {
+        pub inline fn reduce(self: *@This(), initial: anytype, tuple: anytype, f: anytype) void {
+            const AccumulatorType = @TypeOf(initial);
             if (comptime !utils.isTuple(@TypeOf(tuple))) {
                 @compileError("argument should be a tuple");
             }
@@ -374,7 +375,11 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                     setupTupleArguments(tuple, &iters, &dtypes);
                     accumulator = f(dtypes, accumulator);
                 }
-                self.scalarRef(result_idxs).* = accumulator;
+                if (comptime op.isTensor(AccumulatorType)) {
+                    self.ref(result_idxs).copy(accumulator);
+                } else {
+                    self.scalarRef(result_idxs).* = accumulator;
+                }
             }
         }
 

@@ -151,7 +151,7 @@ pub fn SubTensorIterator(comptime TensorType: type) type {
             };
         }
 
-        pub fn next(self: *Self) ?@TypeOf(self.tensor.ref(.{0})) {
+        pub fn next(self: *Self) ?@TypeOf(self.tensor.RefResult(1)) {
             if (self.current_index >= shape_arr[0]) return null;
 
             const current_idx = self.current_index;
