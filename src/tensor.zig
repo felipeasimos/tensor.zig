@@ -205,6 +205,28 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             }
         }
 
+        pub inline fn matmul(self: anytype, a: anytype, b: anytype) void {
+            // (P, Q) x (Q, R) -> (P, R)
+            const P = comptime a.shape[0];
+            const Q = comptime a.shape[1];
+            const R = comptime b.shape[1];
+            if (comptime (self.shape[0] != P or self.shape[1] != R or b.shape[0] != Q)) {
+                @compileError(std.fmt.comptimePrint("Number of columns don't match with number of rows: {any} x {any} -> {any}", .{ a.shape, b.shape, self.shape }));
+            }
+            for (0..P) |i| {
+                for (0..R) |j| {
+                    var tmp: a.dtype = 0;
+                    for (0..Q) |k| {
+                        const index_self = utils.getIndexAt(.{ i, k }, a.strides);
+                        const index_other = utils.getIndexAt(.{ k, j }, b.strides);
+                        tmp += a.data[index_self] * b.data[index_other];
+                    }
+                    const index_result = utils.getIndexAt(.{ i, j }, self.strides);
+                    self.data[index_result] = tmp;
+                }
+            }
+        }
+
         fn TupleOfIteratorsType(comptime tensorsType: type) type {
             const length = utils.getTypeLength(tensorsType);
             var types: [length]type = undefined;
@@ -277,6 +299,52 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 self.scalarRef(result_idxs).* = f(dtypes);
             }
         }
+
+        // pub inline fn reduce(self: *@This(), initial: dtype, tuple: anytype, f: anytype) void {
+        //     if (comptime !utils.isTuple(@TypeOf(tuple))) {
+        //         @compileError("argument should be a tuple");
+        //     }
+        //
+        //     const subtensor_size = comptime (self.num_scalars / self.shape[0]);
+        //
+        //     const length = comptime utils.getTypeLength(@TypeOf(tuple));
+        //     comptime var iters: TupleOfIteratorsType(@TypeOf(tuple)) = undefined;
+        //     // initialize iterators
+        //     comptime {
+        //         for (0..length) |i| {
+        //             const index_as_str = std.fmt.comptimePrint("{}", .{i});
+        //             const T = @FieldType(@TypeOf(tuple), index_as_str);
+        //             if (op.isTensor(utils.getChildType(T))) {
+        //                 const TensorType = utils.getChildType(T);
+        //                 iters[i] = TensorType.indicesIter();
+        //             } else {
+        //                 iters[i] = tuple[i];
+        //             }
+        //         }
+        //     }
+        //     // change every element
+        //     var dtypes: TupleOfDtypes(@TypeOf(tuple)) = undefined;
+        //     comptime var result_iter = utils.getChildType(@TypeOf(self)).indicesIter();
+        //
+        //     var accumulator = initial;
+        //     inline while (comptime result_iter.next(), 0..subtensor_size) |result_idxs| {
+        //         inline for (0..length) |i| {
+        //             const index_as_str = comptime std.fmt.comptimePrint("{}", .{i});
+        //             const T = comptime @FieldType(@TypeOf(tuple), index_as_str);
+        //             if (comptime op.isTensor(utils.getChildType(T))) {
+        //                 const TensorType = comptime utils.getChildType(T);
+        //                 const strides = comptime utils.getComptimeFieldValue(TensorType, "strides").?;
+        //                 const idxs = (comptime iters[i].next()).?;
+        //                 const data_idx = comptime utils.getIndexAt(idxs, strides);
+        //                 dtypes[i] = tuple[i].data[data_idx];
+        //             } else {
+        //                 dtypes[i] = tuple[i];
+        //             }
+        //         }
+        //         accumulator = f(dtypes, accumulator);
+        //     }
+        //     self.scalarRef(result_idxs).*
+        // }
 
         fn TransposeResult(comptime shuffled_axises: anytype) type {
             if (comptime shuffled_axises.len == 0) {

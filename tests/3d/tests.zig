@@ -222,7 +222,7 @@ pub const TENSOR_3D = struct {
         const reshaped_ref_to_2 = ref_to_2.reshape(.{ 2, 4 });
         try expectEqual(.{ 2, 4 }, reshaped_ref_to_2.shape);
         try expectEqual(8, reshaped_ref_to_2.num_scalars);
-        const result = op.matmulNew(&subtensor1, subtensor2.ref(.{}).reshape(.{ 2, 4 }));
+        const result = op.matmul(&subtensor1, subtensor2.ref(.{}).reshape(.{ 2, 4 }));
 
         try expectEqual(.{ 4, 4 }, result.shape);
     }

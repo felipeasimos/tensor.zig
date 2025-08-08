@@ -14,28 +14,6 @@ pub inline fn isTensor(comptime T: type) bool {
     return false;
 }
 
-pub inline fn matmul(a: anytype, b: anytype, result: anytype) void {
-    // (P, Q) x (Q, R) -> (P, R)
-    const P = comptime a.shape[0];
-    const Q = comptime a.shape[1];
-    const R = comptime b.shape[1];
-    if (comptime (result.shape[0] != P or result.shape[1] != R or b.shape[0] != Q)) {
-        @compileError(std.fmt.comptimePrint("Number of columns don't match with number of rows: {any} x {any} -> {any}", .{ a.shape, b.shape, result.shape }));
-    }
-    for (0..P) |i| {
-        for (0..R) |j| {
-            var tmp: a.dtype = 0;
-            for (0..Q) |k| {
-                const index_self = utils.getIndexAt(.{ i, k }, a.strides);
-                const index_other = utils.getIndexAt(.{ k, j }, b.strides);
-                tmp += a.data[index_self] * b.data[index_other];
-            }
-            const index_result = utils.getIndexAt(.{ i, j }, result.strides);
-            result.data[index_result] = tmp;
-        }
-    }
-}
-
 pub fn MatMulNewResult(dtype: type, a_shape: anytype, b_shape: anytype) type {
     const b_length = utils.getTypeLength(@TypeOf(b_shape));
     if (b_length != 2 or a_shape.len != 2) {
@@ -56,9 +34,9 @@ pub fn MatMulNewResult(dtype: type, a_shape: anytype, b_shape: anytype) type {
     return tensor.InnerTensor(dtype, new_shape, new_strides, false);
 }
 
-pub inline fn matmulNew(a: anytype, b: anytype) MatMulNewResult(a.dtype, a.shape, b.shape) {
+pub inline fn matmul(a: anytype, b: anytype) MatMulNewResult(a.dtype, a.shape, b.shape) {
     var result = MatMulNewResult(a.dtype, a.shape, b.shape){ .data = undefined };
-    matmul(a, b, &result);
+    result.matmul(a, b);
     return result;
 }
 

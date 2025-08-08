@@ -1,20 +1,15 @@
 const utils = @import("utils.zig");
 
-fn incrementIndices(iter: anytype, comptime shape_arr: anytype) void {
-    var dim: usize = shape_arr.len - 1;
-    while (true) {
+pub inline fn incrementIndices(iter: anytype, comptime shape_arr: anytype) void {
+    inline for (0..shape_arr.len) |rev_i| {
+        const dim = shape_arr.len - 1 - rev_i;
         iter.current_indices[dim] += 1;
         if (iter.current_indices[dim] < shape_arr[dim]) {
             return;
         }
-
         iter.current_indices[dim] = 0;
-        if (dim == 0) {
-            iter.finished = true;
-            return;
-        }
-        dim -= 1;
     }
+    iter.finished = true;
 }
 
 pub fn Iterator(comptime TensorType: type) type {

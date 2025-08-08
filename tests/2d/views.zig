@@ -135,7 +135,7 @@ pub const refS_2D = struct {
         var result_data: [6]f64 = .{0} ** 6;
         var result = Tensor(f64, .{ 2, 2 }).init(result_data[0..]);
 
-        op.matmul(&ref1, &ref2, &result);
+        result.matmul(&ref1, &ref2);
 
         try expectEqual(10, result.clone(.{ 0, 0 }));
         try expectEqual(13, result.clone(.{ 0, 1 }));
@@ -151,7 +151,7 @@ pub const refS_2D = struct {
         const ref1 = tensor1.ref(.{});
         const ref2 = tensor2.ref(.{});
 
-        const result = op.matmulNew(&ref1, &ref2);
+        const result = op.matmul(&ref1, &ref2);
 
         try expectEqual(.{ 2, 2 }, result.shape);
         try expectEqual(10, result.clone(.{ 0, 0 }));
