@@ -202,3 +202,84 @@ test "iterator basic 1D" {
     }
     try expectEqual(3, count);
 }
+
+test "reduce with scalar sum - in place" {
+    var data: [3]f64 = .{ 1, 2, 3 };
+    var tensor = Tensor(f64, .{3}).init(data[0..]);
+    var result = Tensor(f64, .{1}).zeroes();
+
+    result.reduce(@as(f64, 0), .{tensor.ref(.{})}, (struct {
+        pub fn func(args: struct { f64 }, acc: f64) f64 {
+            return args[0] + acc;
+        }
+    }).func);
+
+    try expectEqual(6, result.clone(.{0}));
+}
+
+test "reduce with scalar product - in place" {
+    var data: [3]f64 = .{ 2, 3, 4 };
+    const tensor = Tensor(f64, .{3}).init(data[0..]);
+    var result = Tensor(f64, .{1}).zeroes();
+
+    result.reduce(@as(f64, 1), .{tensor}, (struct {
+        pub fn func(args: struct { f64 }, acc: f64) f64 {
+            return args[0] * acc;
+        }
+    }).func);
+
+    try expectEqual(24, result.clone(.{0}));
+}
+
+test "reduce with scalar product - in place using address of tensor" {
+    var data: [3]f64 = .{ 2, 3, 4 };
+    var tensor = Tensor(f64, .{3}).init(data[0..]);
+    var result = Tensor(f64, .{1}).zeroes();
+
+    result.reduce(@as(f64, 1), .{&tensor}, (struct {
+        pub fn func(args: struct { f64 }, acc: f64) f64 {
+            return args[0] * acc;
+        }
+    }).func);
+
+    try expectEqual(24, result.clone(.{0}));
+}
+
+test "reduce with scalar sum" {
+    var data: [3]f64 = .{ 1, 2, 3 };
+    var tensor = Tensor(f64, .{3}).init(data[0..]);
+
+    const result = op.reduce(@as(f64, 0), .{tensor.ref(.{})}, (struct {
+        pub fn func(args: struct { f64 }, acc: f64) f64 {
+            return args[0] + acc;
+        }
+    }).func);
+
+    try expectEqual(6, result.clone(.{0}));
+}
+
+test "reduce with scalar product" {
+    var data: [3]f64 = .{ 2, 3, 4 };
+    const tensor = Tensor(f64, .{3}).init(data[0..]);
+
+    const result = op.reduce(@as(f64, 1), .{tensor}, (struct {
+        pub fn func(args: struct { f64 }, acc: f64) f64 {
+            return args[0] * acc;
+        }
+    }).func);
+
+    try expectEqual(24, result.clone(.{0}));
+}
+
+test "reduce with scalar product - using address of tensor" {
+    var data: [3]f64 = .{ 2, 3, 4 };
+    var tensor = Tensor(f64, .{3}).init(data[0..]);
+
+    const result = op.reduce(@as(f64, 1), .{&tensor}, (struct {
+        pub fn func(args: struct { f64 }, acc: f64) f64 {
+            return args[0] * acc;
+        }
+    }).func);
+
+    try expectEqual(24, result.clone(.{0}));
+}

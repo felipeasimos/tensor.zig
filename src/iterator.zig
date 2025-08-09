@@ -135,25 +135,24 @@ pub fn DataRefIterator(comptime TensorType: type) type {
     };
 }
 
-pub fn SubTensorIterator(comptime TensorType: type) type {
-    const T = utils.getChildType(TensorType);
-    const shape_arr = utils.getComptimeFieldValue(T, "shape").?;
+pub fn SubTensorIterator(comptime T: type) type {
+    const TensorType = utils.getChildType(T);
+    const shape_arr = utils.getComptimeFieldValue(TensorType, "shape").?;
 
     return struct {
         const Self = @This();
 
-        tensor: *T,
+        tensor: T,
         current_index: usize = 0,
 
-        pub fn init(tensor: *T) Self {
+        pub fn init(tensor: T) Self {
             return Self{
                 .tensor = tensor,
             };
         }
 
-        pub fn next(self: *Self) ?@TypeOf(self.tensor.RefResult(1)) {
+        pub fn next(self: *Self) ?@TypeOf(self.tensor.ref(.{0})) {
             if (self.current_index >= shape_arr[0]) return null;
-
             const current_idx = self.current_index;
             self.current_index += 1;
             return self.tensor.ref(.{current_idx});

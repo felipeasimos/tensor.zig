@@ -286,10 +286,14 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 const T = comptime @FieldType(TupleType, index_as_str);
                 if (comptime op.isTensor(utils.getChildType(T))) {
                     const TensorType = comptime utils.getChildType(T);
-                    const strides = comptime utils.getComptimeFieldValue(TensorType, "strides").?;
-                    const idxs = (comptime iters[i].next()).?;
-                    const data_idx = comptime utils.getIndexAt(idxs, strides);
-                    dtypes[i] = tuple[i].data[data_idx];
+                    if (comptime @TypeOf(iters[i]) == iterator.IndicesIterator(TensorType)) {
+                        const strides = comptime utils.getComptimeFieldValue(TensorType, "strides").?;
+                        const idxs = (comptime iters[i].next()).?;
+                        const data_idx = comptime utils.getIndexAt(idxs, strides);
+                        dtypes[i] = tuple[i].data[data_idx];
+                    } else {
+                        dtypes[i] = iters[i].next().?;
+                    }
                 } else {
                     dtypes[i] = tuple[i];
                 }
@@ -334,7 +338,12 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 const index_as_str = comptime std.fmt.comptimePrint("{}", .{i});
                 const T = comptime @FieldType(TupleType, index_as_str);
                 if (comptime op.isTensor(utils.getChildType(T))) {
-                    dtypes[i] = iters[i].next().?;
+                    const value = iters[i].next().?;
+                    if (comptime op.isTensor(utils.getChildType(@TypeOf(value)))) {
+                        dtypes[i] = value;
+                    } else {
+                        dtypes[i] = value.*;
+                    }
                 } else {
                     dtypes[i] = tuple[i];
                 }
@@ -349,7 +358,12 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 const T = @FieldType(tensorsType, index_as_str);
                 if (comptime op.isTensor(utils.getChildType(T))) {
                     const TensorType = utils.getChildType(T);
-                    types[i] = TensorType.RefResult(1);
+                    const ArgType = TensorType.RefResult(1);
+                    if (comptime op.isTensor(ArgType)) {
+                        types[i] = ArgType;
+                    } else {
+                        types[i] = utils.getChildType(ArgType);
+                    }
                 } else {
                     types[i] = T;
                 }
@@ -357,29 +371,40 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             return std.meta.Tuple(&types);
         }
 
+        fn firstTensorFirstAxis(tensorsType: type) usize {
+            const length = utils.getTypeLength(tensorsType);
+            for (0..length) |i| {
+                const index_as_str = std.fmt.comptimePrint("{}", .{i});
+                const T = @FieldType(tensorsType, index_as_str);
+                if (comptime op.isTensor(utils.getChildType(T))) {
+                    const TensorType = utils.getChildType(T);
+                    return utils.getComptimeFieldValue(TensorType, "shape").?[0];
+                }
+            }
+            @compileError("At least one tensor must be provided");
+        }
+
         pub inline fn reduce(self: *@This(), initial: anytype, tuple: anytype, f: anytype) void {
             const AccumulatorType = @TypeOf(initial);
             if (comptime !utils.isTuple(@TypeOf(tuple))) {
                 @compileError("argument should be a tuple");
             }
+            const num_iterations = comptime firstTensorFirstAxis(@TypeOf(tuple));
 
-            comptime var iters: TupleOfSubTensorsIteratorsType(@TypeOf(tuple)) = undefined;
+            var iters: TupleOfSubTensorsIteratorsType(@TypeOf(tuple)) = undefined;
             setupIterators(tuple, &iters);
             // change every element
-            var dtypes: TupleOfDtypes(@TypeOf(tuple)) = undefined;
-            comptime var result_iter = utils.getChildType(@TypeOf(self)).indicesIter();
+            var dtypes: TupleOfSubTensorsDtypes(@TypeOf(tuple)) = undefined;
 
             var accumulator = initial;
-            inline while (comptime result_iter.next()) |result_idxs| {
-                inline for (0..self.shape[0]) |_| {
-                    setupTupleArguments(tuple, &iters, &dtypes);
-                    accumulator = f(dtypes, accumulator);
-                }
-                if (comptime op.isTensor(AccumulatorType)) {
-                    self.ref(result_idxs).copy(accumulator);
-                } else {
-                    self.scalarRef(result_idxs).* = accumulator;
-                }
+            inline for (0..num_iterations) |_| {
+                setupTupleSubTensorsArguments(tuple, &iters, &dtypes);
+                accumulator = f(dtypes, accumulator);
+            }
+            if (comptime op.isTensor(AccumulatorType)) {
+                self.copy(accumulator);
+            } else {
+                self.scalarRef(.{0}).* = accumulator;
             }
         }
 

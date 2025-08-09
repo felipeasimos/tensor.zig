@@ -306,4 +306,47 @@ pub const TENSOR_2D = struct {
         }
         try expectEqual(6, count);
     }
+
+    // test "reduce 2D tensor row-wise sum - in place" {
+    //     var data: [6]f64 = .{ 1, 2, 3, 4, 5, 6 };
+    //     const tensor = TensorRef(f64, .{ 2, 3 }).init(data[0..]);
+    //     var result = Tensor(f64, .{2}).zeroes();
+    //
+    //     result.reduce(@as(f64, 0), .{tensor}, (struct {
+    //         pub fn func(args: struct { f64 }, acc: f64) f64 {
+    //             return args[0] + acc;
+    //         }
+    //     }).func);
+    //
+    //     try expectEqual(6, result.clone(.{0})); // 1+2+3
+    //     try expectEqual(15, result.clone(.{1})); // 4+5+6
+    // }
+
+    // test "reduce 2D tensor using op.reduce" {
+    //     var data: [4]f64 = .{ 2, 4, 6, 8 };
+    //     const tensor = TensorRef(f64, .{ 2, 2 }).init(data[0..]);
+    //
+    //     const result = op.reduce(@as(f64, 0), .{tensor}, (struct {
+    //         pub fn func(args: struct { f64 }, acc: f64) f64 {
+    //             return args[0] + acc;
+    //         }
+    //     }).func);
+    //
+    //     try expectEqual(6, result.clone(.{0})); // 2+4
+    //     try expectEqual(14, result.clone(.{1})); // 6+8
+    // }
+    //
+    // test "reduce 2D tensor max value per row" {
+    //     var data: [6]f64 = .{ 3, 1, 5, 2, 8, 4 };
+    //     var tensor = TensorRef(f64, .{ 2, 3 }).init(data[0..]);
+    //
+    //     const result = op.reduce(@as(f64, -1), .{tensor.ref(.{})}, (struct {
+    //         pub fn func(args: struct { f64 }, acc: f64) f64 {
+    //             return @max(args[0], acc);
+    //         }
+    //     }).func);
+    //
+    //     try expectEqual(5, result.clone(.{0})); // max(3,1,5)
+    //     try expectEqual(8, result.clone(.{1})); // max(2,8,4)
+    // }
 };
