@@ -61,14 +61,12 @@ pub inline fn wise(tensors: anytype, f: anytype) WiseResult(@TypeOf(f), @TypeOf(
     return result;
 }
 
-fn ReduceResult(AccumulatorType: type, FnType: type, TensorsType: type) type {
+fn ReduceResult(FnType: type, TensorsType: type) type {
     const ReturnType = @typeInfo(FnType).@"fn".return_type.?;
-    if (ReturnType != AccumulatorType) {
-        @compileError("Accumulator must have the same type as the function return");
-    }
     const tuple_length = utils.getTypeLength(TensorsType);
 
     if (isTensor(ReturnType)) {
+        const dtype = comptime utils.getComptimeFieldValue(ReturnType, "dtype").?;
         for (0..tuple_length) |i| {
             const index_as_str = std.fmt.comptimePrint("{}", .{i});
             const T = utils.getChildType(@FieldType(TensorsType, index_as_str));
@@ -77,7 +75,7 @@ fn ReduceResult(AccumulatorType: type, FnType: type, TensorsType: type) type {
                 const return_shape = comptime utils.getComptimeFieldValue(ReturnType, "shape").?;
                 const result_shape = comptime (.{tensor_shape[0]} ++ return_shape);
                 const strides = utils.calculateStrides(result_shape);
-                return tensor.InnerTensor(ReturnType, result_shape, strides, false);
+                return tensor.InnerTensor(dtype, result_shape, strides, false);
             }
         }
     }
@@ -94,8 +92,8 @@ fn ReduceResult(AccumulatorType: type, FnType: type, TensorsType: type) type {
     @compileError("At least one of the arguments must be a tensor");
 }
 
-pub inline fn reduce(initial: anytype, tensors: anytype, f: anytype) ReduceResult(@TypeOf(initial), @TypeOf(f), @TypeOf(tensors)) {
-    var result: ReduceResult(@TypeOf(initial), @TypeOf(f), @TypeOf(tensors)) = undefined;
+pub inline fn reduce(initial: anytype, tensors: anytype, f: anytype) ReduceResult(@TypeOf(f), @TypeOf(tensors)) {
+    var result: ReduceResult(@TypeOf(f), @TypeOf(tensors)) = undefined;
     result.reduce(initial, tensors, f);
     return result;
 }

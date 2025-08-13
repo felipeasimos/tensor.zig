@@ -3,6 +3,7 @@ const expectEqual = std.testing.expectEqual;
 const expect = std.testing.expect;
 const Tensor = @import("tensor").Tensor;
 const TensorRef = @import("tensor").TensorRef;
+const func = @import("tensor").func;
 const op = @import("tensor").op;
 
 fn createSequence(comptime dtype: type, comptime n: usize) [n]dtype {
@@ -307,20 +308,22 @@ pub const TENSOR_2D = struct {
         try expectEqual(6, count);
     }
 
-    // test "reduce 2D tensor row-wise sum - in place" {
-    //     var data: [6]f64 = .{ 1, 2, 3, 4, 5, 6 };
-    //     const tensor = TensorRef(f64, .{ 2, 3 }).init(data[0..]);
-    //     var result = Tensor(f64, .{2}).zeroes();
-    //
-    //     result.reduce(@as(f64, 0), .{tensor}, (struct {
-    //         pub fn func(args: struct { f64 }, acc: f64) f64 {
-    //             return args[0] + acc;
-    //         }
-    //     }).func);
-    //
-    //     try expectEqual(6, result.clone(.{0})); // 1+2+3
-    //     try expectEqual(15, result.clone(.{1})); // 4+5+6
-    // }
+    test "reduce 2D tensor row-wise sum - in place" {
+        var data: [6]f64 = .{ 1, 2, 3, 4, 5, 6 };
+        const tensor = TensorRef(f64, .{ 2, 3 }).init(data[0..]);
+
+        _ = op.reduce(Tensor(f64, .{3}).zeroes(), .{tensor}, (struct {
+            pub inline fn f(args: anytype, _: anytype) Tensor(f64, .{3}) {
+                const row = args[0];
+                @compileLog(@TypeOf(row.clone(.{})));
+                @compileLog(Tensor(f64, .{3}));
+                return row.clone(.{});
+            }
+        }).f);
+
+        // try expectEqual(6, result.clone(.{0})); // 1+2+3
+        // try expectEqual(15, result.clone(.{1})); // 4+5+6
+    }
 
     // test "reduce 2D tensor using op.reduce" {
     //     var data: [4]f64 = .{ 2, 4, 6, 8 };

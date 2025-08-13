@@ -97,7 +97,11 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
 
         pub fn zeroes() @This() {
             var new: @This() = undefined;
-            @memset(&new.data, 0);
+            if (comptime is_ref) {
+                @memset(new.data, 0);
+            } else {
+                @memset(&new.data, 0);
+            }
             return new;
         }
 
@@ -111,7 +115,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             return &self.data[idx];
         }
 
-        fn RefResult(comptime size: usize) type {
+        pub fn RefResult(comptime size: usize) type {
             if (comptime _shape.len - size == 0) {
                 return *dtype;
             }
@@ -138,7 +142,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             return RefResult(idxs.len).init(self.data[start_idx..final_idx]);
         }
 
-        fn CloneResult(comptime size: usize) type {
+        pub fn CloneResult(comptime size: usize) type {
             if (comptime shape_arr.len - size == 0) {
                 return dtype;
             }
@@ -155,6 +159,9 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         /// get a subtensor. `idxs` needs to be an array.
         pub inline fn clone(self: anytype, idxs: anytype) CloneResult(idxs.len) {
             if (comptime idxs.len == 0) {
+                if (comptime is_ref) {
+                    return CloneResult(0).init(self.data);
+                }
                 return CloneResult(0).init(&self.data);
             }
             if (comptime shape_arr.len - idxs.len == 0) {
@@ -192,16 +199,13 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         pub inline fn copy(self: anytype, from: anytype) void {
-            if (comptime self.strides_are_contiguous) {
-                for (0..self.num_scalars) |i| {
-                    self.data[i] = from.data[i];
-                }
-            } else {
-                var it = self.indicesIter();
-                while (it.next()) |indices| {
-                    const data_idx = utils.getIndexAt(indices, strides_arr);
-                    self.data[data_idx] = from.data[data_idx];
-                }
+            comptime var self_it = utils.getChildType(@TypeOf(self)).indicesIter();
+            comptime var from_it = utils.getChildType(@TypeOf(from)).indicesIter();
+            inline while (comptime self_it.next()) |self_indices| {
+                const from_indices = comptime from_it.next().?;
+                const self_idx = comptime utils.getIndexAt(self_indices, self.strides);
+                const from_idx = comptime utils.getIndexAt(from_indices, from.strides);
+                self.data[self_idx] = from.data[from_idx];
             }
         }
 
@@ -359,11 +363,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 if (comptime op.isTensor(utils.getChildType(T))) {
                     const TensorType = utils.getChildType(T);
                     const ArgType = TensorType.RefResult(1);
-                    if (comptime op.isTensor(ArgType)) {
-                        types[i] = ArgType;
-                    } else {
-                        types[i] = utils.getChildType(ArgType);
-                    }
+                    types[i] = utils.getChildType(ArgType);
                 } else {
                     types[i] = T;
                 }
