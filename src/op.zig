@@ -61,8 +61,11 @@ pub inline fn wise(tensors: anytype, f: anytype) WiseResult(@TypeOf(f), @TypeOf(
     return result;
 }
 
-fn ReduceResult(FnType: type, TensorsType: type) type {
+fn ReduceResult(AccumulatorType: type, FnType: type, TensorsType: type) type {
     const ReturnType = @typeInfo(FnType).@"fn".return_type.?;
+    if (AccumulatorType != ReturnType) {
+        @compileError("Accumulator and return type don't match");
+    }
     const tuple_length = utils.getTypeLength(TensorsType);
 
     if (isTensor(ReturnType)) {
@@ -92,8 +95,8 @@ fn ReduceResult(FnType: type, TensorsType: type) type {
     @compileError("At least one of the arguments must be a tensor");
 }
 
-pub inline fn reduce(initial: anytype, tensors: anytype, f: anytype) ReduceResult(@TypeOf(f), @TypeOf(tensors)) {
-    var result: ReduceResult(@TypeOf(f), @TypeOf(tensors)) = undefined;
+pub inline fn reduce(initial: anytype, tensors: anytype, f: anytype) ReduceResult(@TypeOf(initial), @TypeOf(f), @TypeOf(tensors)) {
+    var result: ReduceResult(@TypeOf(initial), @TypeOf(f), @TypeOf(tensors)) = undefined;
     result.reduce(initial, tensors, f);
     return result;
 }

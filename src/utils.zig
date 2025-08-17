@@ -25,6 +25,26 @@ pub fn asArray(comptime T: type, tuple: anytype) [getTypeLength(@TypeOf(tuple))]
     return array;
 }
 
+fn TupleResult(comptime T: type, comptime length: usize) type {
+    if (length == 0) return .{};
+    var types: [length]type = undefined;
+    for (0..length) |i| {
+        types[i] = T;
+    }
+    return std.meta.Tuple(&types);
+}
+
+pub fn asTuple(comptime T: type, arr: anytype) TupleResult(T, getTypeLength(@TypeOf(arr))) {
+    const field_count = comptime getTypeLength(@TypeOf(arr));
+    if (field_count == 0) return .{};
+
+    var tuple: TupleResult(T, field_count) = undefined;
+    inline for (0..field_count) |i| {
+        tuple[i] = arr[i];
+    }
+    return tuple;
+}
+
 pub fn asSubArray(comptime T: type, arr: anytype, start_idx: usize, end_idx: usize) [end_idx - start_idx + 1]T {
     const size = end_idx - start_idx + 1;
     var result: [size]T = undefined;

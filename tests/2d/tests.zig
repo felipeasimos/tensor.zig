@@ -315,8 +315,6 @@ pub const TENSOR_2D = struct {
         _ = op.reduce(Tensor(f64, .{3}).zeroes(), .{tensor}, (struct {
             pub inline fn f(args: anytype, _: anytype) Tensor(f64, .{3}) {
                 const row = args[0];
-                @compileLog(@TypeOf(row.clone(.{})));
-                @compileLog(Tensor(f64, .{3}));
                 return row.clone(.{});
             }
         }).f);

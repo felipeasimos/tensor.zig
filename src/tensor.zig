@@ -8,13 +8,23 @@ pub const iterator = @import("iterator.zig");
 /// read-only tensor view can be accessed with the `view()` method
 pub fn Tensor(comptime dtype: type, comptime _shape: anytype) type {
     @setEvalBranchQuota(10000);
-    return InnerTensor(dtype, _shape, utils.calculateStrides(_shape), false);
+    return InnerTensor(
+        dtype,
+        utils.asTuple(usize, _shape),
+        utils.asTuple(usize, utils.calculateStrides(_shape)),
+        false,
+    );
 }
 
 /// TensorRef is a type that doesn't store the data, just point to it.
 pub fn TensorRef(comptime dtype: type, comptime _shape: anytype) type {
     @setEvalBranchQuota(10000);
-    return InnerTensor(dtype, _shape, utils.calculateStrides(_shape), true);
+    return InnerTensor(
+        dtype,
+        utils.asTuple(usize, _shape),
+        utils.asTuple(usize, utils.calculateStrides(_shape)),
+        true,
+    );
 }
 
 const type_factory_marker: u8 = undefined;
@@ -123,8 +133,8 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             const new_strides = comptime utils.calculateStrides(new_shape);
             return InnerTensor(
                 dtype,
-                new_shape,
-                new_strides,
+                utils.asTuple(usize, new_shape),
+                utils.asTuple(usize, new_strides),
                 true,
             );
         }
@@ -150,8 +160,8 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             const new_strides = comptime utils.calculateStrides(new_shape);
             return InnerTensor(
                 dtype,
-                new_shape,
-                new_strides,
+                utils.asTuple(usize, new_shape),
+                utils.asTuple(usize, new_strides),
                 false,
             );
         }
@@ -174,7 +184,12 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         fn ReshapeResult(comptime shape: anytype) type {
-            return InnerTensor(dtype, shape, utils.calculateStrides(shape), is_ref);
+            return InnerTensor(
+                dtype,
+                utils.asTuple(usize, shape),
+                utils.asTuple(usize, utils.calculateStrides(shape)),
+                is_ref,
+            );
         }
 
         pub inline fn reshape(self: anytype, comptime shape: anytype) ReshapeResult(shape) {
@@ -430,8 +445,8 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             );
             return InnerTensor(
                 dtype,
-                new_shape,
-                new_strides,
+                utils.asTuple(usize, new_shape),
+                utils.asTuple(usize, new_strides),
                 true,
             );
         }
@@ -452,7 +467,12 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             for (0..ranges.len) |i| {
                 new_strides[i] = strides_arr[i];
             }
-            return InnerTensor(dtype, new_shape, new_strides, is_ref);
+            return InnerTensor(
+                dtype,
+                utils.asTuple(usize, new_shape),
+                utils.asTuple(usize, new_strides),
+                is_ref,
+            );
         }
 
         fn validateRanges(comptime ranges: anytype) bool {
@@ -489,7 +509,12 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         fn BroadcastResult(comptime target_shape: anytype) type {
             const target_arr = utils.asArray(usize, target_shape);
             const new_strides = calculateBroadcastStrides(target_shape);
-            return InnerTensor(dtype, target_arr, new_strides, true);
+            return InnerTensor(
+                dtype,
+                utils.asTuple(usize, target_arr),
+                utils.asTuple(usize, new_strides),
+                true,
+            );
         }
 
         fn calculateBroadcastStrides(comptime target_shape: anytype) @Vector(target_shape.len, usize) {
