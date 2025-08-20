@@ -61,43 +61,20 @@ pub inline fn wise(tensors: anytype, f: anytype) WiseResult(@TypeOf(f), @TypeOf(
     return result;
 }
 
-fn ReduceResult(AccumulatorType: type, FnType: type, TensorsType: type) type {
+fn ReduceResult(AccumulatorType: type, FnType: type) type {
     const ReturnType = @typeInfo(FnType).@"fn".return_type.?;
     if (AccumulatorType != ReturnType) {
         @compileError("Accumulator and return type don't match");
     }
-    const tuple_length = utils.getTypeLength(TensorsType);
 
     if (isTensor(ReturnType)) {
-        // const dtype = comptime utils.getComptimeFieldValue(ReturnType, "dtype").?;
-        // for (0..tuple_length) |i| {
-        //     const index_as_str = std.fmt.comptimePrint("{}", .{i});
-        //     const T = utils.getChildType(@FieldType(TensorsType, index_as_str));
-        //     if (isTensor(T)) {
-        //         const tensor_shape = comptime utils.getComptimeFieldValue(T, "shape").?;
-        //         const return_shape = comptime utils.getComptimeFieldValue(ReturnType, "shape").?;
-        //         const result_shape = comptime (.{tensor_shape[0]} ++ return_shape);
-        //         const strides = utils.calculateStrides(result_shape);
-        //         return tensor.InnerTensor(dtype, result_shape, strides, false);
-        //     }
-        // }
         return ReturnType;
     }
-    for (0..tuple_length) |i| {
-        const index_as_str = std.fmt.comptimePrint("{}", .{i});
-        const T = utils.getChildType(@FieldType(TensorsType, index_as_str));
-        if (isTensor(T)) {
-            const tensor_shape = utils.getComptimeFieldValue(T, "shape").?;
-            const result_shape = .{tensor_shape[0]};
-            const strides = utils.calculateStrides(result_shape);
-            return tensor.InnerTensor(ReturnType, utils.asTuple(usize, result_shape), utils.asTuple(usize, strides), false);
-        }
-    }
-    @compileError("At least one of the arguments must be a tensor");
+    return tensor.InnerTensor(ReturnType, .{1}, .{1}, false);
 }
 
-pub inline fn reduce(initial: anytype, tensors: anytype, f: anytype) ReduceResult(@TypeOf(initial), @TypeOf(f), @TypeOf(tensors)) {
-    var result: ReduceResult(@TypeOf(initial), @TypeOf(f), @TypeOf(tensors)) = undefined;
+pub inline fn reduce(initial: anytype, tensors: anytype, f: anytype) ReduceResult(@TypeOf(initial), @TypeOf(f)) {
+    var result: ReduceResult(@TypeOf(initial), @TypeOf(f)) = undefined;
     result.reduce(initial, tensors, f);
     return result;
 }
