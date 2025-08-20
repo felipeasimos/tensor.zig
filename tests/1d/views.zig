@@ -1,8 +1,9 @@
 const std = @import("std");
 const expectEqual = std.testing.expectEqual;
 const expect = std.testing.expect;
-const TensorView = @import("tensor").TensorView;
+const TensorRef = @import("tensor").TensorRef;
 const Tensor = @import("tensor").Tensor;
+const op = @import("tensor").op;
 
 fn createSequence(comptime dtype: type, comptime n: usize) [n]dtype {
     var seq: [n]dtype = .{1} ** n;
@@ -12,32 +13,32 @@ fn createSequence(comptime dtype: type, comptime n: usize) [n]dtype {
     return seq;
 }
 
-pub const VIEWS_1D = struct {
-    test "view operations - scalar access" {
+pub const refS_1D = struct {
+    test "ref operations - scalar access" {
         var data: [3]f64 = createSequence(f64, 3);
         var tensor = Tensor(f64, .{3}).init(data[0..]);
-        const view = tensor.view(.{});
+        const ref = tensor.ref(.{});
 
-        try expectEqual(data[0], view.scalar(.{0}));
-        try expectEqual(data[1], view.scalar(.{1}));
-        try expectEqual(data[2], view.scalar(.{2}));
+        try expectEqual(data[0], ref.scalar(.{0}));
+        try expectEqual(data[1], ref.scalar(.{1}));
+        try expectEqual(data[2], ref.scalar(.{2}));
     }
 
-    test "view operations - clone" {
+    test "ref operations - clone" {
         var data: [3]f64 = createSequence(f64, 3);
         var tensor = Tensor(f64, .{3}).init(data[0..]);
-        const view = tensor.view(.{});
+        const ref = tensor.ref(.{});
 
-        try expectEqual(data[0], view.clone(.{0}));
-        try expectEqual(data[1], view.clone(.{1}));
-        try expectEqual(data[2], view.clone(.{2}));
+        try expectEqual(data[0], ref.clone(.{0}));
+        try expectEqual(data[1], ref.clone(.{1}));
+        try expectEqual(data[2], ref.clone(.{2}));
     }
 
-    test "view operations - reshape" {
+    test "ref operations - reshape" {
         var data: [6]f64 = createSequence(f64, 6);
         var tensor = Tensor(f64, .{6}).init(data[0..]);
-        const view = tensor.view(.{});
-        const reshaped = view.reshape(.{ 2, 3 });
+        const ref = tensor.ref(.{});
+        const reshaped = ref.reshape(.{ 2, 3 });
 
         try expectEqual(.{ 2, 3 }, reshaped.shape);
         try expectEqual(data[0], reshaped.scalar(.{ 0, 0 }));
@@ -48,17 +49,18 @@ pub const VIEWS_1D = struct {
         try expectEqual(data[5], reshaped.scalar(.{ 1, 2 }));
     }
 
-    test "view operations - wise" {
+    test "ref operations - wise" {
         var data1: [3]f64 = createSequence(f64, 3);
         var data2: [3]f64 = .{ 10, 20, 30 };
         var tensor1 = Tensor(f64, .{3}).init(data1[0..]);
         var tensor2 = Tensor(f64, .{3}).init(data2[0..]);
-        const view1 = tensor1.view(.{});
-        const view2 = tensor2.view(.{});
+        const ref1 = tensor1.ref(.{});
+        const ref2 = tensor2.ref(.{});
         var result = Tensor(f64, .{3}).init(data1[0..]);
 
-        view1.wise(&view2, &result, (struct {
-            pub fn func(a: f64, b: f64) f64 {
+        result.wise(.{ &ref1, &ref2 }, (struct {
+            pub fn func(args: struct { f64, f64 }) f64 {
+                const a, const b = args;
                 return a + b;
             }
         }).func);
@@ -68,16 +70,17 @@ pub const VIEWS_1D = struct {
         try expectEqual(32, result.clone(.{2}));
     }
 
-    test "view operations - wiseNew" {
+    test "ref operations - wiseNew" {
         var data1: [3]f64 = createSequence(f64, 3);
         var data2: [3]f64 = .{ 10, 20, 30 };
         var tensor1 = Tensor(f64, .{3}).init(data1[0..]);
         var tensor2 = Tensor(f64, .{3}).init(data2[0..]);
-        const view1 = tensor1.view(.{});
-        const view2 = tensor2.view(.{});
+        const ref1 = tensor1.ref(.{});
+        const ref2 = tensor2.ref(.{});
 
-        const result = view1.wiseNew(&view2, (struct {
-            pub fn func(a: f64, b: f64) f64 {
+        const result = op.wise(.{ &ref1, &ref2 }, (struct {
+            pub fn func(args: struct { f64, f64 }) f64 {
+                const a, const b = args;
                 return a + b;
             }
         }).func);
@@ -87,11 +90,11 @@ pub const VIEWS_1D = struct {
         try expectEqual(32, result.clone(.{2}));
     }
 
-    test "view operations - slice" {
+    test "ref operations - slice" {
         var data: [6]f64 = createSequence(f64, 6);
         var tensor = Tensor(f64, .{6}).init(data[0..]);
-        const view = tensor.view(.{});
-        const sliced = view.slice(.{.{ 1, 4 }});
+        const ref = tensor.ref(.{});
+        const sliced = ref.slice(.{.{ 1, 4 }});
 
         try expectEqual(.{3}, sliced.shape);
         try expectEqual(data[1], sliced.scalar(.{0}));
@@ -99,26 +102,25 @@ pub const VIEWS_1D = struct {
         try expectEqual(data[3], sliced.scalar(.{2}));
     }
 
-    test "TensorView operations - all const operations" {
+    test "TensorRef operations - all const operations" {
         var data: [3]f64 = createSequence(f64, 3);
-        const view = TensorView(f64, .{3}).init(data[0..]);
+        const ref = TensorRef(f64, .{3}).init(data[0..]);
 
         // Test scalar access
-        try expectEqual(data[0], view.scalar(.{0}));
-        try expectEqual(data[1], view.scalar(.{1}));
-        try expectEqual(data[2], view.scalar(.{2}));
+        try expectEqual(data[0], ref.scalar(.{0}));
+        try expectEqual(data[1], ref.scalar(.{1}));
+        try expectEqual(data[2], ref.scalar(.{2}));
 
         // Test clone
-        try expectEqual(data[0], view.clone(.{0}));
-        try expectEqual(data[1], view.clone(.{1}));
-        try expectEqual(data[2], view.clone(.{2}));
+        try expectEqual(data[0], ref.clone(.{0}));
+        try expectEqual(data[1], ref.clone(.{1}));
+        try expectEqual(data[2], ref.clone(.{2}));
 
         // Test reshape
-        const reshaped = view.reshape(.{ 1, 3 });
+        const reshaped = ref.reshape(.{ 1, 3 });
         try expectEqual(.{ 1, 3 }, reshaped.shape);
         try expectEqual(data[0], reshaped.scalar(.{ 0, 0 }));
         try expectEqual(data[1], reshaped.scalar(.{ 0, 1 }));
         try expectEqual(data[2], reshaped.scalar(.{ 0, 2 }));
     }
 };
-

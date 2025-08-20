@@ -1,23 +1,31 @@
 const utils = @import("utils.zig");
 
-pub fn Iterator(comptime TensorType: type) type {
-    const shape_arr = utils.getComptimeFieldValue(TensorType, "shape").?;
-    const strides_arr = utils.getComptimeFieldValue(TensorType, "strides").?;
-    const ScalarType = utils.getComptimeFieldValue(TensorType, "ScalarType").?;
-    const readonly = utils.getComptimeFieldValue(TensorType, "is_readonly").?;
+inline fn incrementIndices(iter: anytype, comptime shape_arr: anytype) void {
+    inline for (0..shape_arr.len) |rev_i| {
+        const dim = shape_arr.len - 1 - rev_i;
+        iter.current_indices[dim] += 1;
+        if (iter.current_indices[dim] < shape_arr[dim]) {
+            return;
+        }
+        iter.current_indices[dim] = 0;
+    }
+    iter.finished = true;
+}
 
-    const TensorPtrType = if (comptime readonly)
-        *const TensorType
-    else
-        *TensorType;
+pub fn Iterator(comptime TensorType: type) type {
+    const T = utils.getChildType(TensorType);
+    const shape_arr = utils.getComptimeFieldValue(T, "shape").?;
+    const strides_arr = utils.getComptimeFieldValue(T, "strides").?;
+    const dtype = utils.getComptimeFieldValue(T, "dtype").?;
+
     return struct {
         const Self = @This();
 
-        tensor: TensorPtrType,
+        tensor: *T,
         current_indices: @TypeOf(shape_arr),
         finished: bool,
 
-        pub fn init(tensor: TensorPtrType) Self {
+        pub fn init(tensor: *T) Self {
             return Self{
                 .tensor = tensor,
                 .current_indices = @as(@Vector(shape_arr.len, usize), @splat(0)),
@@ -25,40 +33,21 @@ pub fn Iterator(comptime TensorType: type) type {
             };
         }
 
-        pub inline fn next(self: *Self) ?struct { indices: @TypeOf(shape_arr), value: ScalarType } {
+        pub inline fn next(self: *Self) ?struct { indices: @TypeOf(shape_arr), value: dtype } {
             if (self.finished) return null;
 
             const current_idx = self.current_indices;
-            self.incrementIndices();
+            incrementIndices(self, shape_arr);
             const data_idx = utils.getIndexAt(current_idx, strides_arr);
-            const value = if (comptime readonly)
-                self.tensor.data[data_idx]
-            else
-                &self.tensor.data[data_idx];
+            const value = self.tensor.data[data_idx];
             return .{ .indices = current_idx, .value = value };
-        }
-
-        fn incrementIndices(self: *Self) void {
-            var dim: usize = shape_arr.len - 1;
-            while (true) {
-                self.current_indices[dim] += 1;
-                if (self.current_indices[dim] < shape_arr[dim]) {
-                    return;
-                }
-
-                self.current_indices[dim] = 0;
-                if (dim == 0) {
-                    self.finished = true;
-                    return;
-                }
-                dim -= 1;
-            }
         }
     };
 }
 
 pub fn IndicesIterator(comptime TensorType: type) type {
-    const shape_arr = utils.getComptimeFieldValue(TensorType, "shape").?;
+    const T = utils.getChildType(TensorType);
+    const shape_arr = utils.getComptimeFieldValue(T, "shape").?;
     return struct {
         const Self = @This();
 
@@ -76,47 +65,26 @@ pub fn IndicesIterator(comptime TensorType: type) type {
             if (self.finished) return null;
 
             const current_idx = self.current_indices;
-            self.incrementIndices();
+            incrementIndices(self, shape_arr);
             return current_idx;
-        }
-
-        fn incrementIndices(self: *Self) void {
-            var dim: usize = shape_arr.len - 1;
-            while (true) {
-                self.current_indices[dim] += 1;
-                if (self.current_indices[dim] < shape_arr[dim]) {
-                    return;
-                }
-
-                self.current_indices[dim] = 0;
-                if (dim == 0) {
-                    self.finished = true;
-                    return;
-                }
-                dim -= 1;
-            }
         }
     };
 }
 
 pub fn DataIterator(comptime TensorType: type) type {
-    const shape_arr = utils.getComptimeFieldValue(TensorType, "shape").?;
-    const strides_arr = utils.getComptimeFieldValue(TensorType, "strides").?;
-    const ScalarType = utils.getComptimeFieldValue(TensorType, "ScalarType").?;
-    const readonly = utils.getComptimeFieldValue(TensorType, "is_readonly").?;
+    const T = utils.getChildType(TensorType);
+    const shape_arr = utils.getComptimeFieldValue(T, "shape").?;
+    const strides_arr = utils.getComptimeFieldValue(T, "strides").?;
+    const dtype = utils.getComptimeFieldValue(T, "dtype").?;
 
-    const TensorPtrType = if (comptime readonly)
-        *const TensorType
-    else
-        *TensorType;
     return struct {
         const Self = @This();
 
-        tensor: TensorPtrType,
+        tensor: *const T,
         current_indices: @TypeOf(shape_arr),
         finished: bool,
 
-        pub fn init(tensor: TensorPtrType) Self {
+        pub fn init(tensor: *const T) Self {
             return Self{
                 .tensor = tensor,
                 .current_indices = @as(@Vector(shape_arr.len, usize), @splat(0)),
@@ -124,33 +92,70 @@ pub fn DataIterator(comptime TensorType: type) type {
             };
         }
 
-        pub fn next(self: *Self) ?ScalarType {
+        pub fn next(self: *Self) ?dtype {
             if (self.finished) return null;
 
             const current_idx = self.current_indices;
-            self.incrementIndices();
+            self.incrementIndices(shape_arr);
             const data_idx = utils.getIndexAt(current_idx, strides_arr);
-            return if (comptime readonly)
-                self.tensor.data[data_idx]
-            else
-                &self.tensor.data[data_idx];
+            return self.tensor.data[data_idx];
+        }
+    };
+}
+
+pub fn DataRefIterator(comptime TensorType: type) type {
+    const T = utils.getChildType(TensorType);
+    const shape_arr = utils.getComptimeFieldValue(T, "shape").?;
+    const strides_arr = utils.getComptimeFieldValue(T, "strides").?;
+    const dtype = utils.getComptimeFieldValue(T, "dtype").?;
+
+    return struct {
+        const Self = @This();
+
+        tensor: *T,
+        current_indices: @TypeOf(shape_arr),
+        finished: bool,
+
+        pub fn init(tensor: *T) Self {
+            return Self{
+                .tensor = tensor,
+                .current_indices = @as(@Vector(shape_arr.len, usize), @splat(0)),
+                .finished = false,
+            };
         }
 
-        fn incrementIndices(self: *Self) void {
-            var dim: usize = shape_arr.len - 1;
-            while (true) {
-                self.current_indices[dim] += 1;
-                if (self.current_indices[dim] < shape_arr[dim]) {
-                    return;
-                }
+        pub fn next(self: *Self) ?*dtype {
+            if (self.finished) return null;
 
-                self.current_indices[dim] = 0;
-                if (dim == 0) {
-                    self.finished = true;
-                    return;
-                }
-                dim -= 1;
-            }
+            const current_idx = self.current_indices;
+            incrementIndices(self, shape_arr);
+            const data_idx = utils.getIndexAt(current_idx, strides_arr);
+            return &self.tensor.data[data_idx];
+        }
+    };
+}
+
+pub fn SubTensorIterator(comptime T: type) type {
+    const TensorType = utils.getChildType(T);
+    const shape_arr = utils.getComptimeFieldValue(TensorType, "shape").?;
+
+    return struct {
+        const Self = @This();
+
+        tensor: T,
+        current_index: usize = 0,
+
+        pub fn init(tensor: T) Self {
+            return Self{
+                .tensor = tensor,
+            };
+        }
+
+        pub fn next(self: *Self) ?@TypeOf(self.tensor.ref(.{0})) {
+            if (self.current_index >= shape_arr[0]) return null;
+            const current_idx = self.current_index;
+            self.current_index += 1;
+            return self.tensor.ref(.{current_idx});
         }
     };
 }
