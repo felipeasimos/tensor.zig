@@ -31,7 +31,7 @@ pub fn MatMulNewResult(dtype: type, a_shape: anytype, b_shape: anytype) type {
 
     const new_shape = comptime .{ P, R };
     const new_strides = utils.calculateStrides(new_shape);
-    return tensor.InnerTensor(dtype, new_shape, new_strides, false);
+    return tensor.InnerTensor(dtype, utils.asTuple(usize, new_shape), utils.asTuple(usize, new_strides), false);
 }
 
 pub inline fn matmul(a: anytype, b: anytype) MatMulNewResult(a.dtype, a.shape, b.shape) {
@@ -49,7 +49,7 @@ fn WiseResult(comptime FnType: type, comptime tensorsType: type) type {
         if (isTensor(T)) {
             const shape = utils.getComptimeFieldValue(T, "shape").?;
             const strides = utils.calculateStrides(shape);
-            return tensor.InnerTensor(Dtype, shape, strides, false);
+            return tensor.InnerTensor(Dtype, utils.asTuple(usize, shape), utils.asTuple(usize, strides), false);
         }
     }
     @compileError("At least one of the arguments must be a tensor");
@@ -69,18 +69,19 @@ fn ReduceResult(AccumulatorType: type, FnType: type, TensorsType: type) type {
     const tuple_length = utils.getTypeLength(TensorsType);
 
     if (isTensor(ReturnType)) {
-        const dtype = comptime utils.getComptimeFieldValue(ReturnType, "dtype").?;
-        for (0..tuple_length) |i| {
-            const index_as_str = std.fmt.comptimePrint("{}", .{i});
-            const T = utils.getChildType(@FieldType(TensorsType, index_as_str));
-            if (isTensor(T)) {
-                const tensor_shape = comptime utils.getComptimeFieldValue(T, "shape").?;
-                const return_shape = comptime utils.getComptimeFieldValue(ReturnType, "shape").?;
-                const result_shape = comptime (.{tensor_shape[0]} ++ return_shape);
-                const strides = utils.calculateStrides(result_shape);
-                return tensor.InnerTensor(dtype, result_shape, strides, false);
-            }
-        }
+        // const dtype = comptime utils.getComptimeFieldValue(ReturnType, "dtype").?;
+        // for (0..tuple_length) |i| {
+        //     const index_as_str = std.fmt.comptimePrint("{}", .{i});
+        //     const T = utils.getChildType(@FieldType(TensorsType, index_as_str));
+        //     if (isTensor(T)) {
+        //         const tensor_shape = comptime utils.getComptimeFieldValue(T, "shape").?;
+        //         const return_shape = comptime utils.getComptimeFieldValue(ReturnType, "shape").?;
+        //         const result_shape = comptime (.{tensor_shape[0]} ++ return_shape);
+        //         const strides = utils.calculateStrides(result_shape);
+        //         return tensor.InnerTensor(dtype, result_shape, strides, false);
+        //     }
+        // }
+        return ReturnType;
     }
     for (0..tuple_length) |i| {
         const index_as_str = std.fmt.comptimePrint("{}", .{i});
@@ -89,7 +90,7 @@ fn ReduceResult(AccumulatorType: type, FnType: type, TensorsType: type) type {
             const tensor_shape = utils.getComptimeFieldValue(T, "shape").?;
             const result_shape = .{tensor_shape[0]};
             const strides = utils.calculateStrides(result_shape);
-            return tensor.InnerTensor(ReturnType, result_shape, strides, false);
+            return tensor.InnerTensor(ReturnType, utils.asTuple(usize, result_shape), utils.asTuple(usize, strides), false);
         }
     }
     @compileError("At least one of the arguments must be a tensor");
