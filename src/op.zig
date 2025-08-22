@@ -70,11 +70,26 @@ fn ReduceResult(AccumulatorType: type, FnType: type) type {
     if (isTensor(ReturnType)) {
         return ReturnType;
     }
+    return ReturnType;
+}
+
+fn ReduceTensorResult(AccumulatorType: type, FnType: type) type {
+    const ReturnType = @typeInfo(FnType).@"fn".return_type.?;
+    if (AccumulatorType != ReturnType) {
+        @compileError("Accumulator and return type don't match");
+    }
+
+    if (isTensor(ReturnType)) {
+        return ReturnType;
+    }
     return tensor.InnerTensor(ReturnType, .{1}, .{1}, false);
 }
 
 pub inline fn reduce(initial: anytype, tensors: anytype, f: anytype) ReduceResult(@TypeOf(initial), @TypeOf(f)) {
-    var result: ReduceResult(@TypeOf(initial), @TypeOf(f)) = undefined;
+    var result: ReduceTensorResult(@TypeOf(initial), @TypeOf(f)) = undefined;
     result.reduce(initial, tensors, f);
+    if (comptime result.shape.len == 1 and result.shape[0] == 1) {
+        return result.data[0];
+    }
     return result;
 }

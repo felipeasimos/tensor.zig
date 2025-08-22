@@ -359,10 +359,10 @@ pub const TENSOR_2D = struct {
                         return @max(args2[0], acc2);
                     }
                 }).f2);
-                return @max(acc, current_row_max.scalar(.{0}));
+                return @max(acc, current_row_max);
             }
         }).f);
 
-        try expectEqual(6, result.clone(.{0}));
+        try expectEqual(6, result);
     }
 };

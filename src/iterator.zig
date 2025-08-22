@@ -96,7 +96,7 @@ pub fn DataIterator(comptime TensorType: type) type {
             if (self.finished) return null;
 
             const current_idx = self.current_indices;
-            self.incrementIndices(shape_arr);
+            incrementIndices(self, shape_arr);
             const data_idx = utils.getIndexAt(current_idx, strides_arr);
             return self.tensor.data[data_idx];
         }

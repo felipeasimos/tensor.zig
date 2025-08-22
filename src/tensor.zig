@@ -291,8 +291,6 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                     } else {
                         iters[i] = @TypeOf(iters[i]).init(tuple[i]);
                     }
-                } else {
-                    iters[i] = tuple[i];
                 }
             }
         }

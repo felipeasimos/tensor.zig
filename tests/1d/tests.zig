@@ -255,7 +255,7 @@ test "reduce with scalar sum" {
         }
     }).func);
 
-    try expectEqual(6, result.clone(.{0}));
+    try expectEqual(6, result);
 }
 
 test "reduce with scalar product" {
@@ -268,7 +268,7 @@ test "reduce with scalar product" {
         }
     }).func);
 
-    try expectEqual(24, result.clone(.{0}));
+    try expectEqual(24, result);
 }
 
 test "reduce with scalar product - using address of tensor" {
@@ -281,5 +281,5 @@ test "reduce with scalar product - using address of tensor" {
         }
     }).func);
 
-    try expectEqual(24, result.clone(.{0}));
+    try expectEqual(24, result);
 }
