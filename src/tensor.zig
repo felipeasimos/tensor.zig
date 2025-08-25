@@ -247,6 +247,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         fn TupleOfIteratorsType(comptime tensorsType: type) type {
+            @setEvalBranchQuota(100000);
             const length = utils.getTypeLength(tensorsType);
             var types: [length]type = undefined;
             inline for (0..length) |i| {
@@ -262,6 +263,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         fn TupleOfDtypes(comptime tensorsType: type) type {
+            @setEvalBranchQuota(100000);
             const length = utils.getTypeLength(tensorsType);
             var types: [length]type = undefined;
             for (0..length) |i| {
@@ -334,6 +336,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         fn TupleOfSubTensorsIteratorsType(comptime tensorsType: type) type {
+            @setEvalBranchQuota(100000);
             const length = utils.getTypeLength(tensorsType);
             var types: [length]type = undefined;
             inline for (0..length) |i| {
@@ -368,6 +371,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         fn TupleOfSubTensorsDtypes(comptime tensorsType: type) type {
+            @setEvalBranchQuota(100000);
             const length = utils.getTypeLength(tensorsType);
             var types: [length]type = undefined;
             for (0..length) |i| {
