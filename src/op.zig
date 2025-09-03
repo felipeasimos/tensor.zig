@@ -8,8 +8,8 @@ pub inline fn isTensor(comptime T: type) bool {
     if (info != .@"struct" and info != .@"union") {
         return false;
     }
-    if (utils.getComptimeFieldValue(T, "factory_function")) |val| {
-        return val == tensor.InnerTensor;
+    if (@hasDecl(T, "FactoryFunction")) {
+        return T.FactoryFunction == tensor.InnerTensor;
     }
     return false;
 }
@@ -47,7 +47,7 @@ fn WiseResult(comptime FnType: type, comptime tensorsType: type) type {
         const index_as_str = std.fmt.comptimePrint("{}", .{i});
         const T = utils.getChildType(@FieldType(tensorsType, index_as_str));
         if (isTensor(T)) {
-            const shape = utils.getComptimeFieldValue(T, "shape").?;
+            const shape = T.Shape;
             const strides = utils.calculateStrides(shape);
             return tensor.InnerTensor(Dtype, utils.asTuple(usize, shape), utils.asTuple(usize, strides), false);
         }

@@ -14,9 +14,9 @@ inline fn incrementIndices(iter: anytype, comptime shape_arr: anytype) void {
 
 pub fn Iterator(comptime TensorType: type) type {
     const T = utils.getChildType(TensorType);
-    const shape_arr = utils.getComptimeFieldValue(T, "shape").?;
-    const strides_arr = utils.getComptimeFieldValue(T, "strides").?;
-    const dtype = utils.getComptimeFieldValue(T, "dtype").?;
+    const shape_arr = T.Shape;
+    const strides_arr = T.Strides;
+    const dtype = T.Dtype;
 
     return struct {
         const Self = @This();
@@ -47,7 +47,7 @@ pub fn Iterator(comptime TensorType: type) type {
 
 pub fn IndicesIterator(comptime TensorType: type) type {
     const T = utils.getChildType(TensorType);
-    const shape_arr = utils.getComptimeFieldValue(T, "shape").?;
+    const shape_arr = T.Shape;
     return struct {
         const Self = @This();
 
@@ -73,9 +73,9 @@ pub fn IndicesIterator(comptime TensorType: type) type {
 
 pub fn DataIterator(comptime TensorType: type) type {
     const T = utils.getChildType(TensorType);
-    const shape_arr = utils.getComptimeFieldValue(T, "shape").?;
-    const strides_arr = utils.getComptimeFieldValue(T, "strides").?;
-    const dtype = utils.getComptimeFieldValue(T, "dtype").?;
+    const shape_arr = T.Shape;
+    const strides_arr = T.Strides;
+    const dtype = T.Dtype;
 
     return struct {
         const Self = @This();
@@ -105,9 +105,9 @@ pub fn DataIterator(comptime TensorType: type) type {
 
 pub fn DataRefIterator(comptime TensorType: type) type {
     const T = utils.getChildType(TensorType);
-    const shape_arr = utils.getComptimeFieldValue(T, "shape").?;
-    const strides_arr = utils.getComptimeFieldValue(T, "strides").?;
-    const dtype = utils.getComptimeFieldValue(T, "dtype").?;
+    const shape_arr = T.Shape;
+    const strides_arr = T.Strides;
+    const dtype = T.Dtype;
 
     return struct {
         const Self = @This();
@@ -137,7 +137,7 @@ pub fn DataRefIterator(comptime TensorType: type) type {
 
 pub fn SubTensorIterator(comptime T: type) type {
     const TensorType = utils.getChildType(T);
-    const shape_arr = utils.getComptimeFieldValue(TensorType, "shape").?;
+    const shape_arr = TensorType.Shape;
 
     return struct {
         const Self = @This();

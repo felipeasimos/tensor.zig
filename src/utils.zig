@@ -81,19 +81,6 @@ pub fn calculateStrides(comptime shape: anytype) @Vector(shape.len, usize) {
     return strides;
 }
 
-pub fn getComptimeFieldValue(comptime T: type, comptime field_name: []const u8) ?@FieldType(T, field_name) {
-    const type_info = @typeInfo(T);
-    if (@TypeOf(type_info) == void) return null;
-    inline for (type_info.@"struct".fields) |field| {
-        if (std.mem.eql(u8, field.name, field_name)) {
-            if (field.default_value_ptr) |default_ptr| {
-                return @as(*const field.type, @ptrCast(@alignCast(default_ptr))).*;
-            }
-        }
-    }
-    return null;
-}
-
 pub fn getChildType(comptime T: type) type {
     const type_info = @typeInfo(T);
     const active_tag = std.meta.activeTag(type_info);

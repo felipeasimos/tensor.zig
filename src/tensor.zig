@@ -43,19 +43,25 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         .Add,
         (shape_arr - @as(@Vector(shape_arr.len, usize), @splat(1))) * strides_arr,
     );
+    const is_contiguous = utils.stridesAreContiguous(shape_arr, strides_arr);
     const DataSequenceType = if (is_ref)
         []dtype
     else
         [total_num_scalars]dtype;
 
     return struct {
+        pub const FactoryFunction: @TypeOf(InnerTensor) = InnerTensor;
+        pub const Dtype: type = dtype;
+        pub const Shape: @TypeOf(shape_arr) = shape_arr;
+        pub const Strides: @TypeOf(strides_arr) = strides_arr;
+        pub const NumScalars: usize = total_num_scalars;
+        pub const StridesAreContiguous: bool = is_contiguous;
+
         comptime shape: @TypeOf(shape_arr) = shape_arr,
         comptime strides: @TypeOf(strides_arr) = strides_arr,
         comptime dtype: type = dtype,
         comptime num_scalars: usize = total_num_scalars,
-        comptime is_reference: bool = is_ref,
-        comptime strides_are_contiguous: bool = utils.stridesAreContiguous(shape_arr, strides_arr),
-        comptime factory_function: @TypeOf(InnerTensor) = InnerTensor,
+        comptime strides_are_contiguous: bool = is_contiguous,
 
         data: DataSequenceType,
 
@@ -271,7 +277,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 const T = @FieldType(tensorsType, index_as_str);
                 if (comptime op.isTensor(utils.getChildType(T))) {
                     const TensorType = utils.getChildType(T);
-                    const current_dtype = utils.getComptimeFieldValue(TensorType, "dtype").?;
+                    const current_dtype = TensorType.Dtype;
                     types[i] = current_dtype;
                 } else {
                     types[i] = T;
@@ -306,7 +312,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 if (comptime op.isTensor(utils.getChildType(T))) {
                     const TensorType = comptime utils.getChildType(T);
                     if (comptime @TypeOf(iters[i]) == iterator.IndicesIterator(TensorType)) {
-                        const strides = comptime utils.getComptimeFieldValue(TensorType, "strides").?;
+                        const strides = TensorType.Strides;
                         const idxs = (comptime iters[i].next()).?;
                         const data_idx = comptime utils.getIndexAt(idxs, strides);
                         dtypes[i] = tuple[i].data[data_idx];
@@ -395,7 +401,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 const T = @FieldType(tensorsType, index_as_str);
                 if (comptime op.isTensor(utils.getChildType(T))) {
                     const TensorType = utils.getChildType(T);
-                    return utils.getComptimeFieldValue(TensorType, "shape").?[0];
+                    return TensorType.Shape[0];
                 }
             }
             @compileError("At least one tensor must be provided");
