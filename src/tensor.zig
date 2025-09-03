@@ -566,7 +566,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         pub inline fn dataRefIter(self: *@This()) iterator.DataIterator(@This()) {
-            return iterator.DataIterator(@This()).init(self);
+            return iterator.DataRefIterator(@This()).init(self);
         }
 
         pub inline fn iter(self: *@This()) iterator.Iterator(@This()) {
