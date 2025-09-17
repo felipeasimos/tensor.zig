@@ -27,8 +27,6 @@ pub fn TensorRef(comptime dtype: type, comptime _shape: anytype) type {
     );
 }
 
-const type_factory_marker: u8 = undefined;
-
 pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides: anytype, comptime is_ref: bool) type {
     const dtype_info = @typeInfo(dtype);
     if (dtype_info != .float and dtype_info != .int) {
@@ -37,6 +35,10 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
 
     const shape_arr = utils.asArray(usize, _shape);
     const strides_arr = utils.asArray(usize, _strides);
+
+    if (shape_arr.len != strides_arr.len) {
+        @compileError("shape and stride array must have the same length");
+    }
 
     const total_num_scalars = @reduce(.Mul, @as(@Vector(shape_arr.len, usize), shape_arr));
     const highest_idx = @reduce(
@@ -54,14 +56,16 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         pub const Dtype: type = dtype;
         pub const Shape: @TypeOf(shape_arr) = shape_arr;
         pub const Strides: @TypeOf(strides_arr) = strides_arr;
-        pub const NumScalars: usize = total_num_scalars;
+        pub const TotalNumScalars: usize = total_num_scalars;
         pub const StridesAreContiguous: bool = is_contiguous;
+        pub const MemoryLayout: utils.MemoryLayout = utils.getMemoryLayout(Strides, Shape);
 
-        comptime shape: @TypeOf(shape_arr) = shape_arr,
-        comptime strides: @TypeOf(strides_arr) = strides_arr,
+        comptime shape: @TypeOf(shape_arr) = Shape,
+        comptime strides: @TypeOf(strides_arr) = Strides,
         comptime dtype: type = dtype,
-        comptime num_scalars: usize = total_num_scalars,
-        comptime strides_are_contiguous: bool = is_contiguous,
+        comptime num_scalars: usize = TotalNumScalars,
+        comptime strides_are_contiguous: bool = StridesAreContiguous,
+        comptime memory_layout: utils.MemoryLayout = MemoryLayout,
 
         data: DataSequenceType,
 
