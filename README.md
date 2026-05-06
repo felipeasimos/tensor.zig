@@ -2,12 +2,16 @@
 
 A Zig tensor library with compile-time shapes and efficient operations.
 
+Following the explicity of zig, there is no hidden copies of tensors happening at any point in this library!
+> But what if this messes up too much the strides and shapes?
+Then a compile error is thrown to help you manually tweak the operations. No performance / memory surprises at runtime!
+
 ## Tensor Creation
 
 ```zig
 // Create tensor with compile-time shape
 var tensor = Tensor(f64, .{3, 3}).init(&data);
-var view = TensorView(f64, .{3, 3}).init(data[0..]);
+var ref = TensorRef(f64, .{3, 3}).init(data[0..]);
 
 // Create zero-filled tensor
 var zeros = Tensor(f64, .{2, 2}).zeroes();
@@ -30,10 +34,10 @@ var ref = tensor.mut(.{0, 1});
 var sub = tensor.clone(.{0});
 ```
 
-### Views and Slicing
+### References and Slicing
 ```zig
-// Get view of subtensor
-var view = tensor.view(.{0});
+// Get reference of subtensor
+var ref = tensor.ref(.{0});
 
 // Slice with ranges
 var slice = tensor.slice(.{.{1, 3}, .{0, 2}});
@@ -92,4 +96,3 @@ const sub = func.subFactory(f64);
 const mul = func.mulFactory(f64);
 const div = func.divFactory(f64);
 ```
-

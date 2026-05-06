@@ -5,7 +5,7 @@ pub const func = @import("func.zig");
 pub const iterator = @import("iterator.zig");
 
 /// OwnedTensor owns the underlying tensor data and can make changes to it
-/// read-only tensor view can be accessed with the `view()` method
+/// reference can be obtained with `ref()`
 pub fn Tensor(comptime dtype: type, comptime _shape: anytype) type {
     @setEvalBranchQuota(10000);
     return InnerTensor(
@@ -13,6 +13,7 @@ pub fn Tensor(comptime dtype: type, comptime _shape: anytype) type {
         utils.asTuple(usize, _shape),
         utils.asTuple(usize, utils.calculateStrides(_shape)),
         false,
+        .RowMajor,
     );
 }
 
@@ -24,10 +25,11 @@ pub fn TensorRef(comptime dtype: type, comptime _shape: anytype) type {
         utils.asTuple(usize, _shape),
         utils.asTuple(usize, utils.calculateStrides(_shape)),
         true,
+        .RowMajor,
     );
 }
 
-pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides: anytype, comptime is_ref: bool) type {
+pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides: anytype, comptime is_ref: bool, comptime layout: utils.MemoryLayout) type {
     const dtype_info = @typeInfo(dtype);
     if (dtype_info != .float and dtype_info != .int) {
         @compileError("Only floats and integers are valid tensor dtypes");
@@ -46,6 +48,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         (shape_arr - @as(@Vector(shape_arr.len, usize), @splat(1))) * strides_arr,
     );
     const is_contiguous = utils.stridesAreContiguous(shape_arr, strides_arr);
+
     const DataSequenceType = if (is_ref)
         []dtype
     else
@@ -58,7 +61,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         pub const Strides: @TypeOf(strides_arr) = strides_arr;
         pub const TotalNumScalars: usize = total_num_scalars;
         pub const StridesAreContiguous: bool = is_contiguous;
-        pub const MemoryLayout: utils.MemoryLayout = utils.getMemoryLayout(Strides, Shape);
+        pub const MemoryLayout: utils.MemoryLayout = layout;
 
         comptime shape: @TypeOf(shape_arr) = Shape,
         comptime strides: @TypeOf(strides_arr) = Strides,
@@ -146,6 +149,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 utils.asTuple(usize, new_shape),
                 utils.asTuple(usize, new_strides),
                 true,
+                MemoryLayout,
             );
         }
 
@@ -235,6 +239,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         }
 
         pub inline fn matmul(self: anytype, a: anytype, b: anytype) void {
+            // blocked gemm
             // (P, Q) x (Q, R) -> (P, R)
             const P = comptime a.shape[0];
             const Q = comptime a.shape[1];
@@ -484,6 +489,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 utils.asTuple(usize, new_shape),
                 utils.asTuple(usize, new_strides),
                 is_ref,
+                MemoryLayout,
             );
         }
 
@@ -526,6 +532,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 utils.asTuple(usize, target_arr),
                 utils.asTuple(usize, new_strides),
                 true,
+                MemoryLayout,
             );
         }
 

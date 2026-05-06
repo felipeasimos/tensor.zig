@@ -26,12 +26,8 @@ pub fn asArray(comptime T: type, tuple: anytype) [getTypeLength(@TypeOf(tuple))]
 }
 
 fn TupleResult(comptime T: type, comptime length: usize) type {
-    if (length == 0) return .{};
-    var types: [length]type = undefined;
-    for (0..length) |i| {
-        types[i] = T;
-    }
-    return std.meta.Tuple(&types);
+    const type_arr = .{T} ** length;
+    return @Tuple(&type_arr);
 }
 
 pub fn asTuple(comptime T: type, arr: anytype) TupleResult(T, getTypeLength(@TypeOf(arr))) {
@@ -84,27 +80,7 @@ pub fn calculateStrides(comptime shape: anytype) @Vector(shape.len, usize) {
 pub const MemoryLayout = enum {
     RowMajor,
     ColumnMajor,
-    Vector,
-    TransposedVector,
-    Unit,
 };
-
-pub fn getMemoryLayout(comptime strides: anytype, comptime shape: anytype) MemoryLayout {
-    const len = getTypeLength(@TypeOf(strides));
-    if (len == 1) return MemoryLayout.Unit;
-
-    const column_size = shape[len - 1];
-    const row_stride = strides[len - 2];
-    const column_stride = strides[len - 1];
-    const row_size = shape[len - 2];
-
-    if (row_size == 1 and column_size == 1) return MemoryLayout.Unit;
-    if (column_size == 1) return MemoryLayout.Vector;
-    if (row_stride == 1 and column_stride == 1) return MemoryLayout.TransposedVector;
-    if (row_stride > column_stride) return MemoryLayout.RowMajor;
-
-    return MemoryLayout.ColumnMajor;
-}
 
 pub fn getChildType(comptime T: type) type {
     const type_info = @typeInfo(T);

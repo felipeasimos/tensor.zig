@@ -2,7 +2,7 @@
     .name = .tensor,
     .version = "0.0.1",
     .fingerprint = 0xa1832708e5d970a1,
-    .minimum_zig_version = "0.14.0",
+    .minimum_zig_version = "0.16.0",
     .dependencies = .{},
     .paths = .{
         "build.zig",
