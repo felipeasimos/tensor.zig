@@ -49,7 +49,7 @@ fn WiseResult(comptime FnType: type, comptime tensorsType: type) type {
         if (isTensor(T)) {
             const shape = T.Shape;
             const strides = utils.calculateStrides(shape);
-            return tensor.InnerTensor(Dtype, utils.asTuple(usize, shape), utils.asTuple(usize, strides), false, T.MemoryLayout);
+            return tensor.InnerTensor(Dtype, utils.asTuple(usize, shape), utils.asTuple(usize, strides), false);
         }
     }
     @compileError("At least one of the arguments must be a tensor");
@@ -82,7 +82,7 @@ fn ReduceTensorResult(AccumulatorType: type, FnType: type) type {
     if (isTensor(ReturnType)) {
         return ReturnType;
     }
-    return tensor.InnerTensor(ReturnType, .{1}, .{1}, false, .RowMajor);
+    return tensor.InnerTensor(ReturnType, .{1}, .{1}, false);
 }
 
 pub inline fn reduce(initial: anytype, tensors: anytype, f: anytype) ReduceResult(@TypeOf(initial), @TypeOf(f)) {

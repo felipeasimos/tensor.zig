@@ -1,5 +1,6 @@
 const std = @import("std");
 const utils = @import("utils.zig");
+const CPUGEMM = @import("matmul/cpu.zig").matmul;
 pub const op = @import("op.zig");
 pub const func = @import("func.zig");
 pub const iterator = @import("iterator.zig");
@@ -13,7 +14,6 @@ pub fn Tensor(comptime dtype: type, comptime _shape: anytype) type {
         utils.asTuple(usize, _shape),
         utils.asTuple(usize, utils.calculateStrides(_shape)),
         false,
-        .RowMajor,
     );
 }
 
@@ -25,11 +25,10 @@ pub fn TensorRef(comptime dtype: type, comptime _shape: anytype) type {
         utils.asTuple(usize, _shape),
         utils.asTuple(usize, utils.calculateStrides(_shape)),
         true,
-        .RowMajor,
     );
 }
 
-pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides: anytype, comptime is_ref: bool, comptime layout: utils.MemoryLayout) type {
+pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides: anytype, comptime is_ref: bool) type {
     const dtype_info = @typeInfo(dtype);
     if (dtype_info != .float and dtype_info != .int) {
         @compileError("Only floats and integers are valid tensor dtypes");
@@ -61,14 +60,12 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
         pub const Strides: @TypeOf(strides_arr) = strides_arr;
         pub const TotalNumScalars: usize = total_num_scalars;
         pub const StridesAreContiguous: bool = is_contiguous;
-        pub const MemoryLayout: utils.MemoryLayout = layout;
 
         comptime shape: @TypeOf(shape_arr) = Shape,
         comptime strides: @TypeOf(strides_arr) = Strides,
         comptime dtype: type = dtype,
         comptime num_scalars: usize = TotalNumScalars,
         comptime strides_are_contiguous: bool = StridesAreContiguous,
-        comptime memory_layout: utils.MemoryLayout = MemoryLayout,
 
         data: DataSequenceType,
 
@@ -138,6 +135,20 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             return &self.data[idx];
         }
 
+        pub fn AsVectorResult() type {
+            if (!is_contiguous) {
+                @compileLog("Only contiguous tensors can be casted to vectors");
+            }
+            if (is_ref) {
+                return *@Vector(Shape[0], Dtype);
+            }
+            return @Vector(Shape[0], Dtype);
+        }
+
+        pub inline fn asVector(self: anytype) AsVectorResult() {
+            return self.data;
+        }
+
         pub fn RefResult(comptime size: usize) type {
             if (comptime _shape.len - size == 0) {
                 return *dtype;
@@ -149,7 +160,6 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 utils.asTuple(usize, new_shape),
                 utils.asTuple(usize, new_strides),
                 true,
-                MemoryLayout,
             );
         }
 
@@ -238,27 +248,8 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             }
         }
 
-        pub inline fn matmul(self: anytype, a: anytype, b: anytype) void {
-            // blocked gemm
-            // (P, Q) x (Q, R) -> (P, R)
-            const P = comptime a.shape[0];
-            const Q = comptime a.shape[1];
-            const R = comptime b.shape[1];
-            if (comptime (self.shape[0] != P or self.shape[1] != R or b.shape[0] != Q)) {
-                @compileError(std.fmt.comptimePrint("Number of columns don't match with number of rows: {any} x {any} -> {any}", .{ a.shape, b.shape, self.shape }));
-            }
-            for (0..P) |i| {
-                for (0..R) |j| {
-                    var tmp: a.dtype = 0;
-                    for (0..Q) |k| {
-                        const index_self = utils.getIndexAt(.{ i, k }, a.strides);
-                        const index_other = utils.getIndexAt(.{ k, j }, b.strides);
-                        tmp += a.data[index_self] * b.data[index_other];
-                    }
-                    const index_result = utils.getIndexAt(.{ i, j }, self.strides);
-                    self.data[index_result] = tmp;
-                }
-            }
+        pub inline fn matmul(self: anytype, io: std.Io, a: anytype, b: anytype) !void {
+            return CPUGEMM(io, self, a, b);
         }
 
         fn TupleOfIteratorsType(comptime tensorsType: type) type {
@@ -489,7 +480,6 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 utils.asTuple(usize, new_shape),
                 utils.asTuple(usize, new_strides),
                 is_ref,
-                MemoryLayout,
             );
         }
 
@@ -502,6 +492,7 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             return true;
         }
 
+        /// returns a reference
         pub inline fn slice(self: anytype, comptime ranges: anytype) SliceResult(ranges) {
             if (comptime !validateRanges(ranges)) {
                 @compileError("Invalid slicing ranges");
@@ -532,7 +523,6 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
                 utils.asTuple(usize, target_arr),
                 utils.asTuple(usize, new_strides),
                 true,
-                MemoryLayout,
             );
         }
 

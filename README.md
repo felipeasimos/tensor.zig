@@ -96,3 +96,16 @@ const sub = func.subFactory(f64);
 const mul = func.mulFactory(f64);
 const div = func.divFactory(f64);
 ```
+
+## Getting column major matrices
+
+Before initializing the data inside the matrix, you just need to tranpose the indices approprietly. One easy way to do this is calling `transpose`:
+
+```zig
+const b_transposed = b.transpose(.{});
+// you can avoid data copies using a `ref`.
+// if your tensor is already a ref nothing will be copied
+const b_ref_for_sure_not_copied = b.ref(.{}).transpose(.{});
+```
+
+You can also just clone a transposed matrix.

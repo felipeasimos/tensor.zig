@@ -77,9 +77,37 @@ pub fn calculateStrides(comptime shape: anytype) @Vector(shape.len, usize) {
     return strides;
 }
 
+pub fn calculateStridesColumnMajor(comptime shape: anytype) @Vector(shape.len, usize) {
+    var strides: [shape.len]usize = .{1} ** shape.len;
+    for (1..shape.len) |i| {
+        const idx = shape.len - i - 1;
+        strides[idx] = shape[idx + 1] * strides[idx + 1];
+    }
+    if (shape.len > 1) {
+        const tmp = strides[shape.len - 1];
+        strides[shape.len - 1] = strides[shape.len - 2];
+        strides[shape.len - 2] = tmp;
+    }
+    return strides;
+}
+
 pub const MemoryLayout = enum {
     RowMajor,
     ColumnMajor,
+
+    pub fn detectLayout(comptime strides: anytype) ?@This() {
+        var is_row_major = true;
+        var is_col_major = true;
+
+        for (0..strides.len - 1) |i| {
+            if (strides[i] < strides[i + 1]) is_row_major = false;
+            if (strides[i] > strides[i + 1]) is_col_major = false;
+        }
+
+        if (is_row_major) return .RowMajor;
+        if (is_col_major) return .ColumnMajor;
+        return null; // e.g. after arbitrary slicing/permutation
+    }
 };
 
 pub fn getChildType(comptime T: type) type {
