@@ -1,4 +1,5 @@
 const std = @import("std");
+const op = @import("op.zig");
 
 pub fn createSequence(comptime dtype: type, comptime n: usize) [n]dtype {
     var seq: [n]dtype = .{1} ** n;
@@ -50,10 +51,10 @@ pub fn asSubArray(comptime T: type, arr: anytype, start_idx: usize, end_idx: usi
     return result;
 }
 
-pub fn asSubVector(comptime T: type, arr: anytype, start_idx: usize, end_idx: usize) @Vector(end_idx - start_idx + 1, T) {
-    const size = end_idx - start_idx + 1;
-    const seq_vec: @Vector(size, T) = createSequence(T, size);
-    const mask = seq_vec + @as(@Vector(size, T), @splat(start_idx));
+pub fn asSubVector(comptime T: type, arr: anytype, comptime start_idx: usize, comptime end_idx: usize) @Vector(end_idx - start_idx + 1, T) {
+    const size = comptime end_idx - start_idx + 1;
+    const seq_vec: @Vector(size, T) = comptime createSequence(T, size);
+    const mask = comptime seq_vec + @as(@Vector(size, T), @splat(start_idx));
     return @shuffle(
         usize,
         arr,
@@ -62,13 +63,14 @@ pub fn asSubVector(comptime T: type, arr: anytype, start_idx: usize, end_idx: us
     );
 }
 
-pub fn getIndexAt(idxs: anytype, comptime strides: anytype) usize {
-    const strides_to = comptime asSubVector(usize, strides, 0, idxs.len - 1);
-    const idxs_vec: @Vector(idxs.len, usize) = @bitCast(asArray(usize, idxs));
+pub fn getIndexAt(idxs: anytype, strides: anytype) usize {
+    const idxs_len = comptime getTypeLength(@TypeOf(idxs));
+    const strides_to: @Vector(idxs_len, usize) = strides[0..idxs_len].*;
+    const idxs_vec: @Vector(idxs_len, usize) = @bitCast(asArray(usize, idxs));
     return @reduce(.Add, strides_to * idxs_vec);
 }
 
-pub fn calculateStrides(comptime shape: anytype) @Vector(shape.len, usize) {
+pub fn calculateStridesRowMajor(shape: anytype) @Vector(shape.len, usize) {
     var strides: [shape.len]usize = .{1} ** shape.len;
     for (1..shape.len) |i| {
         const idx = shape.len - i - 1;
@@ -76,8 +78,30 @@ pub fn calculateStrides(comptime shape: anytype) @Vector(shape.len, usize) {
     }
     return strides;
 }
+pub fn getNumberOfDimensions(tensorTupleType: type) usize {
+    const length = @typeInfo(tensorTupleType).@"struct".fields.len;
+    inline for (0..length) |i| {
+        const index_as_str = std.fmt.comptimePrint("{}", .{i});
+        const T = getChildType(@FieldType(tensorTupleType, index_as_str));
+        if (op.isTensor(T)) {
+            return T.n_dims;
+        }
+    }
+    @compileError("At least one of the arguments must be a tensor");
+}
 
-pub fn calculateStridesColumnMajor(comptime shape: anytype) @Vector(shape.len, usize) {
+pub fn getTensorInTupleShape(tensorTuple: anytype) [getNumberOfDimensions(@TypeOf(tensorTuple))]usize {
+    const length = @typeInfo(@TypeOf(tensorTuple)).@"struct".fields.len;
+    inline for (0..length) |i| {
+        const index_as_str = std.fmt.comptimePrint("{}", .{i});
+        const T = getChildType(@FieldType(@TypeOf(tensorTuple), index_as_str));
+        if (op.isTensor(T)) {
+            return tensorTuple[i].metadata.shape;
+        }
+    }
+    @compileError("At least one of the arguments must be a tensor");
+}
+pub fn calculateStridesColumnMajor(shape: anytype) @Vector(shape.len, usize) {
     var strides: [shape.len]usize = .{1} ** shape.len;
     for (1..shape.len) |i| {
         const idx = shape.len - i - 1;
@@ -95,7 +119,7 @@ pub const MemoryLayout = enum {
     RowMajor,
     ColumnMajor,
 
-    pub fn detectLayout(comptime strides: anytype) ?@This() {
+    pub fn detectLayout(strides: anytype) ?@This() {
         var is_row_major = true;
         var is_col_major = true;
 
@@ -123,8 +147,8 @@ pub fn getChildType(comptime T: type) type {
     return T;
 }
 
-pub fn stridesAreContiguous(comptime shape_arr: anytype, comptime strides_arr: anytype) bool {
-    const contiguous_strides: [shape_arr.len]usize = calculateStrides(shape_arr);
+pub fn stridesAreContiguous(shape_arr: anytype, strides_arr: anytype) bool {
+    const contiguous_strides: [shape_arr.len]usize = calculateStridesRowMajor(shape_arr);
     return std.mem.eql(usize, &strides_arr, &contiguous_strides);
 }
 

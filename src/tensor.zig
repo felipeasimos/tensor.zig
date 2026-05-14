@@ -5,229 +5,231 @@ pub const op = @import("op.zig");
 pub const func = @import("func.zig");
 pub const iterator = @import("iterator.zig");
 
-/// OwnedTensor owns the underlying tensor data and can make changes to it
-/// reference can be obtained with `ref()`
-pub fn Tensor(comptime dtype: type, comptime _shape: anytype) type {
-    @setEvalBranchQuota(10000);
-    return InnerTensor(
-        dtype,
-        utils.asTuple(usize, _shape),
-        utils.asTuple(usize, utils.calculateStrides(_shape)),
-        false,
-    );
-}
-
-/// TensorRef is a type that doesn't store the data, just point to it.
-pub fn TensorRef(comptime dtype: type, comptime _shape: anytype) type {
-    @setEvalBranchQuota(10000);
-    return InnerTensor(
-        dtype,
-        utils.asTuple(usize, _shape),
-        utils.asTuple(usize, utils.calculateStrides(_shape)),
-        true,
-    );
-}
-
-pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _strides: anytype, comptime is_ref: bool) type {
-    const dtype_info = @typeInfo(dtype);
-    if (dtype_info != .float and dtype_info != .int) {
-        @compileError("Only floats and integers are valid tensor dtypes");
-    }
-
-    const shape_arr = utils.asArray(usize, _shape);
-    const strides_arr = utils.asArray(usize, _strides);
-
-    if (shape_arr.len != strides_arr.len) {
-        @compileError("shape and stride array must have the same length");
-    }
-
-    const total_num_scalars = @reduce(.Mul, @as(@Vector(shape_arr.len, usize), shape_arr));
-    const highest_idx = @reduce(
-        .Add,
-        (shape_arr - @as(@Vector(shape_arr.len, usize), @splat(1))) * strides_arr,
-    );
-    const is_contiguous = utils.stridesAreContiguous(shape_arr, strides_arr);
-
-    const DataSequenceType = if (is_ref)
-        []dtype
-    else
-        [total_num_scalars]dtype;
-
+pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
     return struct {
-        pub const FactoryFunction: @TypeOf(InnerTensor) = InnerTensor;
-        pub const Dtype: type = dtype;
-        pub const Shape: @TypeOf(shape_arr) = shape_arr;
-        pub const Strides: @TypeOf(strides_arr) = strides_arr;
-        pub const TotalNumScalars: usize = total_num_scalars;
-        pub const StridesAreContiguous: bool = is_contiguous;
+        /// used to tell if this type is a tensor
+        pub const Marker: @TypeOf(Tensor) = Tensor;
+        pub const ScalarType: type = ElementType;
+        pub const n_dims: usize = NDims;
 
-        comptime shape: @TypeOf(shape_arr) = Shape,
-        comptime strides: @TypeOf(strides_arr) = Strides,
-        comptime dtype: type = dtype,
-        comptime num_scalars: usize = TotalNumScalars,
-        comptime strides_are_contiguous: bool = StridesAreContiguous,
+        /// runtime metadata values
+        pub const Metadata = struct {
+            strides: [n_dims]usize,
+            shape: [n_dims]usize,
+            pub fn rowMajor(shape: [n_dims]usize) @This() {
+                return .{
+                    .shape = shape,
+                    .strides = utils.calculateStridesRowMajor(shape),
+                };
+            }
+            pub fn columnMajor(shape: [n_dims]usize) @This() {
+                return .{
+                    .shape = shape,
+                    .strides = utils.calculateStridesColumnMajor(shape),
+                };
+            }
+            pub fn isContinuous(self: *const @This()) bool {
+                return utils.stridesAreContiguous(self.shape, self.strides);
+            }
+            pub fn highestIndex(self: *const @This()) usize {
+                if (comptime n_dims == 0) {
+                    return 0;
+                }
+                return @reduce(
+                    .Add,
+                    (self.shape - @as(@Vector(self.shape.len, usize), @splat(1))) * self.strides,
+                );
+            }
+            pub fn numScalars(self: *const @This()) usize {
+                return @reduce(.Mul, @as(@Vector(self.shape.len, usize), self.shape));
+            }
+        };
+        metadata: Metadata,
+        data: []ScalarType,
 
-        data: DataSequenceType,
-
-        pub fn random(rand: std.Random) @This() {
-            var new = @This(){ .data = undefined };
-            new.randomize(rand);
-            return new;
-        }
-
-        pub fn randomize(self: anytype, rand: std.Random) void {
-            const sampler = comptime switch (@typeInfo(dtype)) {
+        pub fn randomize(self: *@This(), rand: std.Random) void {
+            const sampler = comptime switch (@typeInfo(ScalarType)) {
                 .comptime_int, .int => struct {
-                    inline fn sample(r: std.Random) dtype {
-                        return r.int(dtype);
+                    inline fn sample(r: std.Random) ScalarType {
+                        return r.int(ScalarType);
                     }
                 }.sample,
                 .comptime_float, .float => struct {
-                    inline fn sample(r: std.Random) dtype {
+                    inline fn sample(r: std.Random) ScalarType {
                         // For uniform:
-                        return r.float(dtype);
+                        return r.float(ScalarType);
                         // Or, for normal:
                         // var n = std.rand.Normal(dtype).init(r);
                         // return n.sample();
                     }
                 }.sample,
+                .bool => struct {
+                    inline fn sample(r: std.Random) ScalarType {
+                        return r.boolean();
+                    }
+                }.sample,
                 else => @compileError("invalid dtype"),
             };
-
-            if (comptime self.strides_are_contiguous) {
-                for (0..self.num_scalars) |i| {
-                    self.data[i] = sampler(rand);
-                }
-            } else {
-                var it = self.dataRefIter();
-                while (it.next()) |data_ptr| {
-                    data_ptr.* = sampler(rand);
-                }
+            var it = self.dataRefIter();
+            while (it.next()) |data_ptr| {
+                data_ptr.* = sampler(rand);
             }
         }
 
-        pub fn init(data: []dtype) @This() {
-            if (comptime is_ref) {
-                return .{ .data = data[0 .. highest_idx + 1] };
-            }
-            var new: @This() = .{ .data = undefined };
-            std.mem.copyForwards(dtype, &new.data, data[0 .. highest_idx + 1]);
-            return new;
+        pub fn from(metadata: Metadata, data: []ScalarType) @This() {
+            const highest_idx = metadata.highestIndex();
+            return .{
+                .data = data[0 .. highest_idx + 1],
+                .metadata = metadata,
+            };
         }
 
-        pub fn zeroes() @This() {
-            var new: @This() = undefined;
-            if (comptime is_ref) {
-                @memset(new.data, 0);
-            } else {
-                @memset(&new.data, 0);
-            }
-            return new;
+        pub fn dupe(allocator: std.mem.Allocator, metadata: Metadata, data: []ScalarType) !@This() {
+            const highest_idx = metadata.highestIndex();
+            const new_data = try allocator.alloc(ScalarType, highest_idx + 1);
+            @memcpy(new_data, data);
+            return .{
+                .data = new_data,
+                .metadata = metadata,
+            };
         }
 
-        pub inline fn scalar(self: anytype, idxs: @TypeOf(shape_arr)) dtype {
-            const idx = utils.getIndexAt(idxs, self.strides);
+        pub fn zeroes(allocator: std.mem.Allocator, metadata: Metadata) !@This() {
+            const highest_idx = metadata.highestIndex();
+            const data = try allocator.alloc(ScalarType, highest_idx + 1);
+            @memset(data, 0);
+            return .{
+                .data = data,
+                .metadata = metadata,
+            };
+        }
+
+        pub fn ones(allocator: std.mem.Allocator, metadata: Metadata) !@This() {
+            const highest_idx = metadata.highestIndex();
+            const data = try allocator.alloc(ScalarType, highest_idx + 1);
+            @memset(data, 1);
+            return .{
+                .data = data,
+                .metadata = metadata,
+            };
+        }
+
+        pub fn alloc(allocator: std.mem.Allocator, metadata: Metadata) !@This() {
+            const highest_idx = metadata.highestIndex();
+            return .{
+                .data = try allocator.alloc(ScalarType, highest_idx + 1),
+                .metadata = metadata,
+            };
+        }
+
+        pub fn deinit(self: *const @This(), allocator: std.mem.Allocator) void {
+            allocator.free(self.data);
+        }
+
+        pub fn memset(self: *@This(), value: ScalarType) @This() {
+            var self_it = utils.getChildType(@TypeOf(self)).indicesIter();
+            while (self_it.next()) |self_indices| {
+                const self_idx = utils.getIndexAt(self_indices, self.strides);
+                self.data[self_idx] = value;
+            }
+        }
+
+        pub inline fn scalar(self: *const @This(), idxs: [n_dims]usize) ScalarType {
+            const idx = utils.getIndexAt(idxs, self.metadata.strides);
             return self.data[idx];
         }
 
-        pub inline fn scalarRef(self: anytype, idxs: @TypeOf(shape_arr)) *dtype {
-            const idx = utils.getIndexAt(idxs, self.strides);
+        pub inline fn scalarRef(self: *const @This(), idxs: [n_dims]usize) *ScalarType {
+            const idx = utils.getIndexAt(idxs, self.metadata.strides);
             return &self.data[idx];
         }
 
         pub fn AsVectorResult() type {
-            if (!is_contiguous) {
-                @compileLog("Only contiguous tensors can be casted to vectors");
-            }
-            if (is_ref) {
-                return *@Vector(Shape[0], Dtype);
-            }
-            return @Vector(Shape[0], Dtype);
+            return;
         }
 
-        pub inline fn asVector(self: anytype) AsVectorResult() {
-            return self.data;
+        pub inline fn asVector(self: anytype, comptime N: usize) *@Vector(N, ScalarType) {
+            std.debug.assert(self.metadata.isContinuous());
+            return self.data[0..N];
         }
 
-        pub fn RefResult(comptime size: usize) type {
-            if (comptime _shape.len - size == 0) {
-                return *dtype;
+        pub fn SubTensorRef(comptime size: usize) type {
+            if (size > n_dims) {
+                @compileError("Can't resolve subtensor: too much dimensional subtraction");
             }
-            const new_shape = comptime utils.asSubArray(usize, shape_arr, size, shape_arr.len - 1);
-            const new_strides = comptime utils.calculateStrides(new_shape);
-            return InnerTensor(
-                dtype,
-                utils.asTuple(usize, new_shape),
-                utils.asTuple(usize, new_strides),
-                true,
-            );
+            if (size == n_dims) {
+                return *ElementType;
+            }
+            return Tensor(ElementType, n_dims - size);
         }
 
-        pub inline fn ref(self: *@This(), idxs: anytype) RefResult(idxs.len) {
+        pub fn SubTensor(comptime size: usize) type {
+            if (size > n_dims) {
+                @compileError("Can't resolve subtensor: too much dimensional subtraction");
+            }
+            if (size == n_dims) {
+                return ElementType;
+            }
+            return Tensor(ElementType, n_dims - size);
+        }
+
+        pub inline fn constRef(self: *const @This(), idxs: anytype) SubTensor(idxs.len) {
             if (comptime idxs.len == 0) {
-                return RefResult(0).init(self.data[0..]);
+                return .from(self.metadata, self.data);
             }
-            if (comptime _shape.len - idxs.len == 0) {
-                return self.scalarRef(idxs);
+            if (comptime n_dims == idxs.len) {
+                return self.scalar(idxs);
             }
             const strides_to_sub_tensor = comptime utils.asSubVector(usize, self.strides, 0, idxs.len - 1);
             const start_idx = utils.getIndexAt(idxs, self.strides);
             const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
-            return RefResult(idxs.len).init(self.data[start_idx..final_idx]);
+            return SubTensor(idxs.len).from(self.metadata, self.data[start_idx..final_idx]);
         }
 
-        pub fn CloneResult(comptime size: usize) type {
-            if (comptime shape_arr.len - size == 0) {
-                return dtype;
+        pub inline fn ref(self: *@This(), idxs: anytype) SubTensorRef(idxs.len) {
+            if (comptime idxs.len == 0) {
+                return .from(self.metadata, self.data);
             }
-            const new_shape = comptime utils.asSubArray(usize, shape_arr, size, shape_arr.len - 1);
-            const new_strides = comptime utils.calculateStrides(new_shape);
-            return InnerTensor(
-                dtype,
-                utils.asTuple(usize, new_shape),
-                utils.asTuple(usize, new_strides),
-                false,
-            );
+            if (comptime n_dims == idxs.len) {
+                return self.scalarRef(idxs);
+            }
+            const strides_to_sub_tensor: [idxs.len]usize = self.metadata.strides[0..idxs.len].*;
+            const start_idx = utils.getIndexAt(idxs, self.metadata.strides);
+            const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
+
+            const NewTensorType = SubTensor(idxs.len);
+            const new_shape = self.metadata.shape[idxs.len..n_dims].*;
+            const new_metadata = switch (utils.MemoryLayout.detectLayout(self.metadata.strides).?) {
+                .RowMajor => NewTensorType.Metadata.rowMajor(new_shape),
+                .ColumnMajor => NewTensorType.Metadata.columnMajor(new_shape),
+            };
+
+            return NewTensorType.from(new_metadata, self.data[start_idx..final_idx]);
         }
 
         /// get a subtensor. `idxs` needs to be an array.
-        pub inline fn clone(self: anytype, idxs: anytype) CloneResult(idxs.len) {
-            if (comptime idxs.len == 0) {
-                if (comptime is_ref) {
-                    return CloneResult(0).init(self.data);
-                }
-                return CloneResult(0).init(&self.data);
+        pub inline fn clone(self: *const @This(), allocator: std.mem.Allocator, idxs: anytype) SubTensor(idxs.len) {
+            if (comptime n_dims == idxs.len) {
+                return self.scalar(idxs);
             }
-            if (comptime shape_arr.len - idxs.len == 0) {
-                return self.data[utils.getIndexAt(idxs, self.strides)];
-            }
-            const strides_to_sub_tensor = comptime utils.asSubVector(usize, self.strides, 0, idxs.len - 1);
-            const start_idx = utils.getIndexAt(idxs, self.strides);
-            const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
-            return CloneResult(idxs.len).init(self.data[start_idx..final_idx]);
+            const reference = self.ref(idxs);
+            const new = @TypeOf(reference).alloc(allocator, reference.metadata, reference.data);
+            new.copy(reference);
+            return new;
         }
 
-        fn ReshapeResult(comptime shape: anytype) type {
-            return InnerTensor(
-                dtype,
-                utils.asTuple(usize, shape),
-                utils.asTuple(usize, utils.calculateStrides(shape)),
-                is_ref,
-            );
-        }
-
-        pub inline fn reshape(self: anytype, comptime shape: anytype) ReshapeResult(shape) {
-            if (comptime !self.strides_are_contiguous) {
-                @compileError("Can't reshape a tensor without contiguous strides");
-            }
-            const result = ReshapeResult(shape).init(self.data[0..]);
-            if (comptime result.num_scalars != self.num_scalars) {
-                @compileError("Invalid reshape size (the final number of scalars don't match the current tensor)");
-            }
+        pub inline fn reshape(self: *const @This(), new_shape: anytype) Tensor(ScalarType, new_shape.len) {
+            std.debug.assert(self.metadata.isContinuous());
+            const NewTensorType = Tensor(ScalarType, new_shape.len);
+            const new_metadata = switch (utils.MemoryLayout.detectLayout(self.metadata.strides).?) {
+                .RowMajor => NewTensorType.Metadata.rowMajor(new_shape),
+                .ColumnMajor => NewTensorType.Metadata.columnMajor(new_shape),
+            };
+            const result = NewTensorType.from(new_metadata, self.data[0..]);
             return result;
         }
 
-        fn otherValue(other: anytype, i: usize) dtype {
+        fn otherValue(other: anytype, i: usize) ScalarType {
             const T = @TypeOf(other);
             switch (@typeInfo(T)) {
                 .comptime_int, .comptime_float, .int, .float => return other,
@@ -237,174 +239,104 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             @compileError(std.fmt.comptimePrint("Invalid operand type {} for {}", .{ T, @This() }));
         }
 
-        pub inline fn copy(self: anytype, from: anytype) void {
+        pub inline fn copy(self: anytype, other: anytype) void {
             comptime var self_it = utils.getChildType(@TypeOf(self)).indicesIter();
-            comptime var from_it = utils.getChildType(@TypeOf(from)).indicesIter();
+            comptime var from_it = utils.getChildType(@TypeOf(other)).indicesIter();
             inline while (comptime self_it.next()) |self_indices| {
                 const from_indices = comptime from_it.next().?;
                 const self_idx = comptime utils.getIndexAt(self_indices, self.strides);
-                const from_idx = comptime utils.getIndexAt(from_indices, from.strides);
-                self.data[self_idx] = from.data[from_idx];
+                const from_idx = comptime utils.getIndexAt(from_indices, other.strides);
+                self.data[self_idx] = other.data[from_idx];
             }
         }
 
         pub inline fn matmul(self: anytype, io: std.Io, a: anytype, b: anytype) !void {
-            return CPUGEMM(io, self, a, b);
-        }
-
-        fn TupleOfIteratorsType(comptime tensorsType: type) type {
-            @setEvalBranchQuota(100000);
-            const length = utils.getTypeLength(tensorsType);
-            var types: [length]type = undefined;
-            inline for (0..length) |i| {
-                const index_as_str = std.fmt.comptimePrint("{}", .{i});
-                const T = @FieldType(tensorsType, index_as_str);
-                if (comptime op.isTensor(utils.getChildType(T))) {
-                    types[i] = iterator.IndicesIterator(T);
-                } else {
-                    types[i] = T;
+            _ = io;
+            // return CPUGEMM(io, self, a, b);
+            // blocked gemm
+            // (P, Q) x (Q, R) -> (P, R)
+            const P = a.metadata.shape[0];
+            const Q = a.metadata.shape[1];
+            const R = b.metadata.shape[1];
+            std.debug.assert(!(self.metadata.shape[0] != P or self.metadata.shape[1] != R or b.metadata.shape[0] != Q));
+            for (0..P) |i| {
+                for (0..R) |j| {
+                    var tmp: @TypeOf(a.data[0]) = 0;
+                    for (0..Q) |k| {
+                        const index_self = utils.getIndexAt(.{ i, k }, a.metadata.strides);
+                        const index_other = utils.getIndexAt(.{ k, j }, b.metadata.strides);
+                        tmp += a.data[index_self] * b.data[index_other];
+                    }
+                    const index_result = utils.getIndexAt(.{ i, j }, self.metadata.strides);
+                    self.data[index_result] = tmp;
                 }
             }
-            return std.meta.Tuple(&types);
         }
 
-        fn TupleOfDtypes(comptime tensorsType: type) type {
-            @setEvalBranchQuota(100000);
-            const length = utils.getTypeLength(tensorsType);
-            var types: [length]type = undefined;
+        fn TupleOfIteratorsAndResults(tupleType: type, iteratorType: iterator.IteratorType) struct { type, type } {
+            const length = utils.getTypeLength(tupleType);
+            var iterTypes: []const type = &.{};
+            var dtypes: []const type = &.{};
             for (0..length) |i| {
                 const index_as_str = std.fmt.comptimePrint("{}", .{i});
-                const T = @FieldType(tensorsType, index_as_str);
-                if (comptime op.isTensor(utils.getChildType(T))) {
-                    const TensorType = utils.getChildType(T);
-                    const current_dtype = TensorType.Dtype;
-                    types[i] = current_dtype;
+                const T = utils.getChildType(@FieldType(tupleType, index_as_str));
+                if (op.isTensor(T)) {
+                    iterTypes = iterTypes ++ .{iteratorType.GetIteratorType(T)};
+                    dtypes = dtypes ++ .{iteratorType.GetIteratorResultType(T)};
                 } else {
-                    types[i] = T;
+                    iterTypes = iterTypes ++ .{T};
+                    dtypes = dtypes ++ .{T};
                 }
             }
-            return std.meta.Tuple(&types);
-        }
-
-        inline fn setupIterators(tuple: anytype, iters: anytype) void {
-            const TupleType = @TypeOf(tuple);
-            const length = comptime utils.getTypeLength(TupleType);
-            inline for (0..length) |i| {
-                const index_as_str = std.fmt.comptimePrint("{}", .{i});
-                const T = @FieldType(TupleType, index_as_str);
-                if (op.isTensor(utils.getChildType(T))) {
-                    const TensorType = utils.getChildType(T);
-                    if (comptime @TypeOf(iters[i]) == iterator.IndicesIterator(TensorType)) {
-                        iters[i] = comptime TensorType.indicesIter();
-                    } else {
-                        iters[i] = @TypeOf(iters[i]).init(tuple[i]);
-                    }
-                }
-            }
-        }
-
-        inline fn setupTupleArguments(tuple: anytype, iters: anytype, dtypes: anytype) void {
-            const TupleType = @TypeOf(tuple);
-            const length = comptime utils.getTypeLength(TupleType);
-            inline for (0..length) |i| {
-                const index_as_str = comptime std.fmt.comptimePrint("{}", .{i});
-                const T = comptime @FieldType(TupleType, index_as_str);
-                if (comptime op.isTensor(utils.getChildType(T))) {
-                    const TensorType = comptime utils.getChildType(T);
-                    if (comptime @TypeOf(iters[i]) == iterator.IndicesIterator(TensorType)) {
-                        const strides = TensorType.Strides;
-                        const idxs = (comptime iters[i].next()).?;
-                        const data_idx = comptime utils.getIndexAt(idxs, strides);
-                        dtypes[i] = tuple[i].data[data_idx];
-                    } else {
-                        dtypes[i] = iters[i].next().?;
-                    }
-                } else {
-                    dtypes[i] = tuple[i];
-                }
-            }
+            return .{ @Tuple(iterTypes), @Tuple(dtypes) };
         }
 
         pub inline fn wise(self: *@This(), tuple: anytype, f: anytype) void {
             if (comptime !utils.isTuple(@TypeOf(tuple))) {
                 @compileError("argument should be a tuple");
             }
-            comptime var iters: TupleOfIteratorsType(@TypeOf(tuple)) = undefined;
-            setupIterators(tuple, &iters);
-            // change every element
-            var dtypes: TupleOfDtypes(@TypeOf(tuple)) = undefined;
-            comptime var result_iter = utils.getChildType(@TypeOf(self)).indicesIter();
 
-            inline while (comptime result_iter.next()) |result_idxs| {
-                setupTupleArguments(tuple, &iters, &dtypes);
+            _, const Dtypes = TupleOfIteratorsAndResults(@TypeOf(tuple), .data);
+            var dtypes: Dtypes = undefined;
+            // change every element
+            var result_iter = self.indicesIter();
+            const length = comptime utils.getTypeLength(@TypeOf(tuple));
+
+            while (result_iter.next()) |result_idxs| {
+                inline for (0..length) |i| {
+                    const T = utils.getChildType(@TypeOf(tuple[i]));
+                    if (comptime op.isTensor(T)) {
+                        dtypes[i] = tuple[i].scalar(result_idxs);
+                    } else {
+                        dtypes[i] = tuple[i];
+                    }
+                }
                 self.scalarRef(result_idxs).* = f(dtypes);
             }
         }
 
-        fn TupleOfSubTensorsIteratorsType(comptime tensorsType: type) type {
-            @setEvalBranchQuota(100000);
-            const length = utils.getTypeLength(tensorsType);
-            var types: [length]type = undefined;
+        fn initTupleIterators(tuple: anytype, iters: anytype) void {
+            const length = comptime utils.getTypeLength(utils.getChildType(@TypeOf(iters)));
             inline for (0..length) |i| {
-                const index_as_str = std.fmt.comptimePrint("{}", .{i});
-                const T = @FieldType(tensorsType, index_as_str);
-                if (comptime op.isTensor(utils.getChildType(T))) {
-                    types[i] = iterator.SubTensorIterator(T);
+                const T = utils.getChildType(@TypeOf(tuple[i]));
+                if (comptime op.isTensor(T)) {
+                    iters[i] = utils.getChildType(@TypeOf(iters[i])).Type.initIterator(tuple[i]);
                 } else {
-                    types[i] = T;
+                    iters[i] = tuple[i];
                 }
             }
-            return std.meta.Tuple(&types);
         }
 
-        inline fn setupTupleSubTensorsArguments(tuple: anytype, iters: anytype, dtypes: anytype) void {
-            const TupleType = @TypeOf(tuple);
-            const length = comptime utils.getTypeLength(TupleType);
+        fn getTupleIteratorsResults(tuple: anytype, iters: anytype, dtypes: anytype) void {
+            const length = comptime utils.getTypeLength(utils.getChildType(@TypeOf(iters)));
             inline for (0..length) |i| {
-                const index_as_str = comptime std.fmt.comptimePrint("{}", .{i});
-                const T = comptime @FieldType(TupleType, index_as_str);
-                if (comptime op.isTensor(utils.getChildType(T))) {
-                    const value = iters[i].next().?;
-                    if (comptime op.isTensor(utils.getChildType(@TypeOf(value)))) {
-                        dtypes[i] = value;
-                    } else {
-                        dtypes[i] = value.*;
-                    }
+                const T = utils.getChildType(@TypeOf(tuple[i]));
+                if (comptime op.isTensor(T)) {
+                    dtypes[i] = iters[i].next().?;
                 } else {
-                    dtypes[i] = tuple[i];
+                    dtypes[i] = iters[i];
                 }
             }
-        }
-
-        fn TupleOfSubTensorsDtypes(comptime tensorsType: type) type {
-            @setEvalBranchQuota(100000);
-            const length = utils.getTypeLength(tensorsType);
-            var types: [length]type = undefined;
-            for (0..length) |i| {
-                const index_as_str = std.fmt.comptimePrint("{}", .{i});
-                const T = @FieldType(tensorsType, index_as_str);
-                if (comptime op.isTensor(utils.getChildType(T))) {
-                    const TensorType = utils.getChildType(T);
-                    const ArgType = TensorType.RefResult(1);
-                    types[i] = utils.getChildType(ArgType);
-                } else {
-                    types[i] = T;
-                }
-            }
-            return std.meta.Tuple(&types);
-        }
-
-        fn firstTensorFirstAxis(tensorsType: type) usize {
-            const length = utils.getTypeLength(tensorsType);
-            for (0..length) |i| {
-                const index_as_str = std.fmt.comptimePrint("{}", .{i});
-                const T = @FieldType(tensorsType, index_as_str);
-                if (comptime op.isTensor(utils.getChildType(T))) {
-                    const TensorType = utils.getChildType(T);
-                    return TensorType.Shape[0];
-                }
-            }
-            @compileError("At least one tensor must be provided");
         }
 
         pub inline fn reduce(self: *@This(), initial: anytype, tuple: anytype, f: anytype) void {
@@ -412,16 +344,16 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             if (comptime !utils.isTuple(@TypeOf(tuple))) {
                 @compileError("argument should be a tuple");
             }
-            const num_iterations = comptime firstTensorFirstAxis(@TypeOf(tuple));
+            const num_iterations = utils.getTensorInTupleShape(tuple)[0];
 
-            var iters: TupleOfSubTensorsIteratorsType(@TypeOf(tuple)) = undefined;
-            setupIterators(tuple, &iters);
-            // change every element
-            var dtypes: TupleOfSubTensorsDtypes(@TypeOf(tuple)) = undefined;
+            const IterTypes, const Dtypes = TupleOfIteratorsAndResults(@TypeOf(tuple), .subtensor);
+            var dtypes: Dtypes = undefined;
+            var iters: IterTypes = undefined;
+            initTupleIterators(tuple, &iters);
 
             var accumulator = initial;
-            inline for (0..num_iterations) |_| {
-                setupTupleSubTensorsArguments(tuple, &iters, &dtypes);
+            for (0..num_iterations) |_| {
+                getTupleIteratorsResults(tuple, &iters, &dtypes);
                 accumulator = f(dtypes, accumulator);
             }
             if (comptime op.isTensor(AccumulatorType)) {
@@ -431,122 +363,84 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             }
         }
 
-        fn TransposeResult(comptime shuffled_axises: anytype) type {
+        pub inline fn transpose(self: *const @This(), shuffled_axises: anytype) @This() {
             if (comptime shuffled_axises.len == 0) {
-                var mask = utils.createSequence(usize, strides_arr.len);
-                const tmp = mask[strides_arr.len - 1];
-                mask[strides_arr.len - 1] = mask[strides_arr.len - 2];
-                mask[strides_arr.len - 2] = tmp;
-                return TransposeResult(mask);
+                var shuffle_mask: [n_dims]usize = utils.createSequence(usize, n_dims);
+                shuffle_mask[n_dims - 1] = n_dims - 2;
+                shuffle_mask[n_dims - 2] = n_dims - 1;
+                return self.transpose(shuffle_mask);
             }
-            const new_strides = @shuffle(
-                usize,
-                strides_arr,
-                undefined,
-                shuffled_axises,
-            );
-            const new_shape = @shuffle(
-                usize,
-                shape_arr,
-                undefined,
-                shuffled_axises,
-            );
-            return InnerTensor(
-                dtype,
-                utils.asTuple(usize, new_shape),
-                utils.asTuple(usize, new_strides),
-                true,
-            );
+            var new_strides: [n_dims]usize = undefined;
+            var new_shape: [n_dims]usize = undefined;
+            inline for (shuffled_axises, 0..) |axis_idxs, i| {
+                new_strides[i] = self.metadata.strides[axis_idxs];
+                new_shape[i] = self.metadata.shape[axis_idxs];
+            }
+            return .{
+                .data = self.data,
+                .metadata = .{
+                    .shape = new_shape,
+                    .strides = new_strides,
+                },
+            };
         }
 
-        pub inline fn transpose(self: anytype, comptime shuffled_axises: anytype) TransposeResult(shuffled_axises) {
-            if (comptime is_ref) {
-                return TransposeResult(.{}).init(self.data);
-            }
-            return TransposeResult(.{}).init(&self.data);
-        }
-
-        fn SliceResult(comptime ranges: anytype) type {
-            var new_shape: [ranges.len]usize = undefined;
-            for (0..ranges.len) |i| {
-                new_shape[i] = ranges[i][1] - ranges[i][0];
-            }
-            var new_strides: [ranges.len]usize = undefined;
-            for (0..ranges.len) |i| {
-                new_strides[i] = strides_arr[i];
-            }
-            return InnerTensor(
-                dtype,
-                utils.asTuple(usize, new_shape),
-                utils.asTuple(usize, new_strides),
-                is_ref,
-            );
-        }
-
-        fn validateRanges(comptime ranges: anytype) bool {
-            for (ranges, 0..) |range, i| {
-                if (range[1] <= range[0] or range[1] > shape_arr[i]) {
+        fn checkSliceRanges(self: *const @This(), ranges: anytype) bool {
+            inline for (ranges, 0..) |range, i| {
+                if (range[1] <= range[0] or range[1] > self.metadata.shape[i]) {
                     return false;
                 }
             }
             return true;
         }
 
-        /// returns a reference
-        pub inline fn slice(self: anytype, comptime ranges: anytype) SliceResult(ranges) {
-            if (comptime !validateRanges(ranges)) {
-                @compileError("Invalid slicing ranges");
+        pub inline fn slice(self: *const @This(), ranges: anytype) @This() {
+            std.debug.assert(self.checkSliceRanges(ranges));
+
+            var offset: usize = 0;
+
+            inline for (0..ranges.len) |i| {
+                offset += ranges[i][0] * self.metadata.strides[i];
             }
-            if (comptime !self.strides_are_contiguous) {
-                @compileError("Can't slice a tensor without contiguous strides");
+
+            var new_shape: [n_dims]usize = self.metadata.shape;
+            inline for (0..ranges.len) |i| {
+                const start = ranges[i][0];
+                const end = ranges[i][1];
+                new_shape[i] = end - start;
             }
-            const start_idx, const final_idx = comptime idxs: {
-                var low_ranges_arr: [ranges.len]usize = undefined;
-                var high_ranges_arr: [ranges.len]usize = undefined;
-                for (0..ranges.len) |i| {
-                    low_ranges_arr[i] = ranges[i][0];
-                    high_ranges_arr[i] = ranges[i][1] - 1;
-                }
-                break :idxs .{
-                    utils.getIndexAt(low_ranges_arr, strides_arr),
-                    utils.getIndexAt(high_ranges_arr, strides_arr),
-                };
-            };
-            return SliceResult(ranges).init(self.data[start_idx .. final_idx + 1]);
+            var new_strides: [n_dims]usize = self.metadata.strides;
+            for (0..ranges.len) |i| {
+                new_strides[i] = self.metadata.strides[i];
+            }
+
+            return .from(.{
+                .strides = new_strides,
+                .shape = new_shape,
+            }, self.data[offset..]);
         }
 
-        fn BroadcastResult(comptime target_shape: anytype) type {
-            const target_arr = utils.asArray(usize, target_shape);
-            const new_strides = calculateBroadcastStrides(target_shape);
-            return InnerTensor(
-                dtype,
-                utils.asTuple(usize, target_arr),
-                utils.asTuple(usize, new_strides),
-                true,
-            );
-        }
-
-        fn calculateBroadcastStrides(comptime target_shape: anytype) @Vector(target_shape.len, usize) {
+        fn calculateBroadcastStrides(self: *const @This(), target_shape: anytype) @Vector(target_shape.len, usize) {
             const target_arr = utils.asArray(usize, target_shape);
             var new_strides: [target_arr.len]usize = undefined;
 
-            if (target_arr.len < shape_arr.len) {
+            if (target_arr.len < n_dims) {
                 @compileError("Target shape must have at least as many dimensions as source shape");
             }
 
-            const shape_offset = target_arr.len - shape_arr.len;
+            const shape_offset = target_arr.len - n_dims;
 
             for (0..target_arr.len) |i| {
                 if (i < shape_offset) {
                     new_strides[i] = 0;
                 } else {
                     const orig_dim = i - shape_offset;
-                    if (shape_arr[orig_dim] == 1 and target_arr[i] > 1) {
+                    if (self.metadata.shape[orig_dim] == 1 and target_arr[i] > 1) {
                         new_strides[i] = 0;
-                    } else if (shape_arr[orig_dim] == target_arr[i]) {
-                        new_strides[i] = strides_arr[orig_dim];
+                    } else if (self.metadata.shape[orig_dim] == target_arr[i]) {
+                        new_strides[i] = self.metadata.strides[orig_dim];
                     } else {
-                        @compileError("Invalid broadcast: incompatible dimensions");
+                        std.debug.assert(false);
                     }
                 }
             }
@@ -554,28 +448,31 @@ pub fn InnerTensor(comptime dtype: type, comptime _shape: anytype, comptime _str
             return new_strides;
         }
 
-        pub inline fn broadcast(self: anytype, comptime target_shape: anytype) BroadcastResult(target_shape) {
-            return BroadcastResult(target_shape).init(self.data[0..]);
+        pub inline fn broadcast(self: anytype, target_shape: anytype) Tensor(ScalarType, target_shape.len) {
+            return .from(.{
+                .shape = target_shape,
+                .strides = self.calculateBroadcastStrides(target_shape),
+            }, self.data);
         }
 
-        pub inline fn indicesIter() iterator.IndicesIterator(@This()) {
-            return iterator.IndicesIterator(@This()).init();
+        pub inline fn indicesIter(self: *const @This()) iterator.IndicesIterator(@This()) {
+            return .init(self);
         }
 
         pub inline fn dataIter(self: *const @This()) iterator.DataIterator(@This()) {
-            return iterator.DataIterator(@This()).init(self);
+            return .init(self);
         }
 
         pub inline fn dataRefIter(self: *@This()) iterator.DataIterator(@This()) {
-            return iterator.DataRefIterator(@This()).init(self);
+            return .init(self);
         }
 
-        pub inline fn iter(self: *@This()) iterator.Iterator(@This()) {
-            return iterator.Iterator(@This()).init(self);
+        pub inline fn iter(self: *const @This()) iterator.Iterator(@This()) {
+            return .init(self);
         }
 
-        pub inline fn subTensorIter(self: *@This()) iterator.SubTensorIterator(@This()) {
-            return iterator.SubTensorIterator(@This()).init(self);
+        pub inline fn subTensorIter(self: *const @This()) iterator.SubTensorIterator(@This()) {
+            return .init(self);
         }
     };
 }

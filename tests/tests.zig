@@ -1,5 +1,4 @@
 test "all" {
-    _ = @import("std");
     _ = @import("1d/tests.zig");
     _ = @import("2d/tests.zig");
     _ = @import("3d/tests.zig");

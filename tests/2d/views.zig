@@ -1,7 +1,6 @@
 const std = @import("std");
 const expectEqual = std.testing.expectEqual;
 const expect = std.testing.expect;
-const TensorRef = @import("tensor").TensorRef;
 const Tensor = @import("tensor").Tensor;
 const op = @import("tensor").op;
 
@@ -15,7 +14,7 @@ fn createSequence(comptime dtype: type, comptime n: usize) [n]dtype {
 
 test "ref operations - scalar access" {
     var data: [4]f64 = createSequence(f64, 4);
-    var tensor = Tensor(f64, .{ 2, 2 }).init(data[0..]);
+    var tensor = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), data[0..]);
     const ref = tensor.ref(.{});
 
     try expectEqual(data[0], ref.scalar(.{ 0, 0 }));
@@ -24,24 +23,13 @@ test "ref operations - scalar access" {
     try expectEqual(data[3], ref.scalar(.{ 1, 1 }));
 }
 
-test "ref operations - clone" {
-    var data: [4]f64 = createSequence(f64, 4);
-    var tensor = Tensor(f64, .{ 2, 2 }).init(data[0..]);
-    const ref = tensor.ref(.{});
-
-    try expectEqual(data[0], ref.clone(.{ 0, 0 }));
-    try expectEqual(data[1], ref.clone(.{ 0, 1 }));
-    try expectEqual(data[2], ref.clone(.{ 1, 0 }));
-    try expectEqual(data[3], ref.clone(.{ 1, 1 }));
-}
-
 test "ref operations - reshape" {
     var data: [6]f64 = createSequence(f64, 6);
-    var tensor = Tensor(f64, .{ 2, 3 }).init(data[0..]);
+    var tensor = Tensor(f64, 2).from(.rowMajor(.{ 2, 3 }), data[0..]);
     const ref = tensor.ref(.{});
     const reshaped = ref.reshape(.{ 3, 2 });
 
-    try expectEqual(.{ 3, 2 }, reshaped.shape);
+    try expectEqual(.{ 3, 2 }, reshaped.metadata.shape);
     try expectEqual(data[0], reshaped.scalar(.{ 0, 0 }));
     try expectEqual(data[1], reshaped.scalar(.{ 0, 1 }));
     try expectEqual(data[2], reshaped.scalar(.{ 1, 0 }));
@@ -53,11 +41,12 @@ test "ref operations - reshape" {
 test "ref operations - wise" {
     var data1: [4]f64 = .{ 1, 2, 3, 4 };
     var data2: [4]f64 = .{ 10, 20, 30, 40 };
-    var tensor1 = Tensor(f64, .{ 2, 2 }).init(data1[0..]);
-    var tensor2 = Tensor(f64, .{ 2, 2 }).init(data2[0..]);
+    var tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), data1[0..]);
+    var tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), data2[0..]);
     const ref1 = tensor1.ref(.{});
     const ref2 = tensor2.ref(.{});
-    var result = Tensor(f64, .{ 2, 2 }).init(data1[0..]);
+    var result = try Tensor(f64, 2).alloc(std.testing.allocator, .rowMajor(.{ 2, 2 }));
+    defer result.deinit(std.testing.allocator);
 
     result.wise(.{ &ref1, &ref2 }, (struct {
         pub fn func(args: struct { f64, f64 }) f64 {
@@ -66,43 +55,44 @@ test "ref operations - wise" {
         }
     }).func);
 
-    try expectEqual(11, result.clone(.{ 0, 0 }));
-    try expectEqual(22, result.clone(.{ 0, 1 }));
-    try expectEqual(33, result.clone(.{ 1, 0 }));
-    try expectEqual(44, result.clone(.{ 1, 1 }));
+    try expectEqual(11, result.scalar(.{ 0, 0 }));
+    try expectEqual(22, result.scalar(.{ 0, 1 }));
+    try expectEqual(33, result.scalar(.{ 1, 0 }));
+    try expectEqual(44, result.scalar(.{ 1, 1 }));
 }
 
 test "ref operations - wiseNew" {
     var data1: [4]f64 = .{ 1, 2, 3, 4 };
     var data2: [4]f64 = .{ 10, 20, 30, 40 };
-    var tensor1 = Tensor(f64, .{ 2, 2 }).init(data1[0..]);
-    var tensor2 = Tensor(f64, .{ 2, 2 }).init(data2[0..]);
+    var tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), data1[0..]);
+    var tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), data2[0..]);
     const ref1 = tensor1.ref(.{});
     const ref2 = tensor2.ref(.{});
 
-    const result = op.wise(.{ &ref1, &ref2 }, (struct {
+    const result = try op.wise(std.testing.allocator, .{ &ref1, &ref2 }, (struct {
         pub fn func(args: struct { f64, f64 }) f64 {
             const a, const b = args;
             return a + b;
         }
     }).func);
+    defer result.deinit(std.testing.allocator);
 
-    try expectEqual(11, result.clone(.{ 0, 0 }));
-    try expectEqual(22, result.clone(.{ 0, 1 }));
-    try expectEqual(33, result.clone(.{ 1, 0 }));
-    try expectEqual(44, result.clone(.{ 1, 1 }));
+    try expectEqual(11, result.scalar(.{ 0, 0 }));
+    try expectEqual(22, result.scalar(.{ 0, 1 }));
+    try expectEqual(33, result.scalar(.{ 1, 0 }));
+    try expectEqual(44, result.scalar(.{ 1, 1 }));
 }
 
 test "ref operations - slice" {
     var data: [9]f64 = createSequence(f64, 9);
-    var tensor = Tensor(f64, .{ 3, 3 }).init(data[0..]);
+    var tensor = Tensor(f64, 2).from(.rowMajor(.{ 3, 3 }), data[0..]);
     const ref = tensor.ref(.{});
     const sliced = ref.slice(.{
         .{ 1, 3 },
         .{ 1, 3 },
     });
 
-    try expectEqual(.{ 2, 2 }, sliced.shape);
+    try expectEqual(.{ 2, 2 }, sliced.metadata.shape);
     try expectEqual(data[4], sliced.scalar(.{ 0, 0 }));
     try expectEqual(data[5], sliced.scalar(.{ 0, 1 }));
     try expectEqual(data[7], sliced.scalar(.{ 1, 0 }));
@@ -111,11 +101,11 @@ test "ref operations - slice" {
 
 test "ref operations - transpose" {
     var data: [6]f64 = createSequence(f64, 6);
-    var tensor = Tensor(f64, .{ 2, 3 }).init(data[0..]);
+    var tensor = Tensor(f64, 2).from(.rowMajor(.{ 2, 3 }), data[0..]);
     const ref = tensor.ref(.{});
     const transposed = ref.transpose(.{});
 
-    try expectEqual(.{ 3, 2 }, transposed.shape);
+    try expectEqual(.{ 3, 2 }, transposed.metadata.shape);
     try expectEqual(data[0], transposed.scalar(.{ 0, 0 }));
     try expectEqual(data[3], transposed.scalar(.{ 0, 1 }));
     try expectEqual(data[1], transposed.scalar(.{ 1, 0 }));
@@ -127,41 +117,42 @@ test "ref operations - transpose" {
 test "ref operations - matmul" {
     var data1: [6]f64 = createSequence(f64, 6);
     var data2: [6]f64 = createSequence(f64, 6);
-    var tensor1 = Tensor(f64, .{ 2, 3 }).init(data1[0..]);
-    var tensor2 = Tensor(f64, .{ 3, 2 }).init(data2[0..]);
+    var tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 2, 3 }), data1[0..]);
+    var tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 3, 2 }), data2[0..]);
     const ref1 = tensor1.ref(.{});
     const ref2 = tensor2.ref(.{});
     var result_data: [6]f64 = .{0} ** 6;
-    var result = Tensor(f64, .{ 2, 2 }).init(result_data[0..]);
+    var result = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), result_data[0..]);
 
-    result.matmul(std.testing.io, &ref1, &ref2);
+    try result.matmul(std.testing.io, &ref1, &ref2);
 
-    try expectEqual(10, result.clone(.{ 0, 0 }));
-    try expectEqual(13, result.clone(.{ 0, 1 }));
-    try expectEqual(28, result.clone(.{ 1, 0 }));
-    try expectEqual(40, result.clone(.{ 1, 1 }));
+    try expectEqual(10, result.scalar(.{ 0, 0 }));
+    try expectEqual(13, result.scalar(.{ 0, 1 }));
+    try expectEqual(28, result.scalar(.{ 1, 0 }));
+    try expectEqual(40, result.scalar(.{ 1, 1 }));
 }
 
 test "ref operations - matmulNew" {
     var data1: [6]f64 = createSequence(f64, 6);
     var data2: [6]f64 = createSequence(f64, 6);
-    var tensor1 = Tensor(f64, .{ 2, 3 }).init(data1[0..]);
-    var tensor2 = Tensor(f64, .{ 3, 2 }).init(data2[0..]);
+    var tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 2, 3 }), data1[0..]);
+    var tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 3, 2 }), data2[0..]);
     const ref1 = tensor1.ref(.{});
     const ref2 = tensor2.ref(.{});
 
-    const result = op.matmul(std.testing.io, &ref1, &ref2);
+    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    defer result.deinit(std.testing.allocator);
 
-    try expectEqual(.{ 2, 2 }, result.shape);
-    try expectEqual(10, result.clone(.{ 0, 0 }));
-    try expectEqual(13, result.clone(.{ 0, 1 }));
-    try expectEqual(28, result.clone(.{ 1, 0 }));
-    try expectEqual(40, result.clone(.{ 1, 1 }));
+    try expectEqual(.{ 2, 2 }, result.metadata.shape);
+    try expectEqual(10, result.scalar(.{ 0, 0 }));
+    try expectEqual(13, result.scalar(.{ 0, 1 }));
+    try expectEqual(28, result.scalar(.{ 1, 0 }));
+    try expectEqual(40, result.scalar(.{ 1, 1 }));
 }
 
-test "TensorRef operations - all const operations" {
+test "Tensor operations - all const operations" {
     var data: [4]f64 = createSequence(f64, 4);
-    const ref = TensorRef(f64, .{ 2, 2 }).init(data[0..]);
+    const ref = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), data[0..]);
 
     // Test scalar access
     try expectEqual(data[0], ref.scalar(.{ 0, 0 }));
@@ -169,15 +160,9 @@ test "TensorRef operations - all const operations" {
     try expectEqual(data[2], ref.scalar(.{ 1, 0 }));
     try expectEqual(data[3], ref.scalar(.{ 1, 1 }));
 
-    // Test clone
-    try expectEqual(data[0], ref.clone(.{ 0, 0 }));
-    try expectEqual(data[1], ref.clone(.{ 0, 1 }));
-    try expectEqual(data[2], ref.clone(.{ 1, 0 }));
-    try expectEqual(data[3], ref.clone(.{ 1, 1 }));
-
     // Test reshape
     const reshaped = ref.reshape(.{4});
-    try expectEqual(.{4}, reshaped.shape);
+    try expectEqual(.{4}, reshaped.metadata.shape);
     try expectEqual(data[0], reshaped.scalar(.{0}));
     try expectEqual(data[1], reshaped.scalar(.{1}));
     try expectEqual(data[2], reshaped.scalar(.{2}));

@@ -109,3 +109,7 @@ const b_ref_for_sure_not_copied = b.ref(.{}).transpose(.{});
 ```
 
 You can also just clone a transposed matrix.
+
+## Note
+
+> In the beginning, this was supposed to be a tensor library in which all metadata (shape, strides) would be only comptime-time known. However, this design decision hits a hard wall when implementing stuff like GEMM: this design forces slices to have compile time known arguments (at least in a decent API), which forces us to unroll outermost loops in GEMM, in the macrokernel. This would be catastrophic for instruction caches in large matrices.

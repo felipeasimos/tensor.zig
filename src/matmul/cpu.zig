@@ -10,14 +10,21 @@ const std = @import("std");
 const utils = @import("../utils.zig");
 const tensor = @import("../tensor.zig");
 
-fn Worker(comptime T: type, comptime n_accumulators: usize) type {
+fn calculateBlockside(comptime T: usize) usize {
+    const target_cache_size_in_bytes = 128 * 1024;
+    const side_of_block_in_bytes = std.math.sqrt(target_cache_size_in_bytes);
+    return side_of_block_in_bytes / @sizeOf(T);
+}
+
+fn Worker(comptime CType: type, comptime AType: type, comptime BType: type, comptime n_accumulators: usize) type {
+    const T = switch (@typeInfo(CType)) {
+        .pointer => |p| p.child.Dtype,
+        else => CType.Dtype,
+    };
     return struct {
         pub const VecLen = std.simd.suggestVectorLength(T);
-        pub const blockside = blockside: {
-            const target_cache_size_in_bytes = 128 * 1024;
-            const side_of_block_in_bytes = std.math.sqrt(target_cache_size_in_bytes);
-            break :blockside side_of_block_in_bytes / @sizeOf(T);
-        };
+        pub const blockside = calculateBlockside(T);
+
         /// operate on a single C tile, using its associated A and B strides
         fn macrokernelFull(c: anytype, a: anytype, b: anytype) void {
             var k: usize = 0;
@@ -44,7 +51,7 @@ fn Worker(comptime T: type, comptime n_accumulators: usize) type {
                 }
             }
         }
-        pub fn macrokernel(c: anytype, a: anytype, b: anytype) void {
+        pub fn macrokernel(c: CType, a: AType, b: BType) void {
             if (c.shape[0] > n_accumulators and c.shape[1] > VecLen) {
                 const row_remainder = c.shape[0] % n_accumulators;
                 const column_remainder = c.shape[1] % VecLen;
@@ -115,18 +122,20 @@ pub fn matmul(io: std.Io, c: anytype, a: anytype, b: anytype) !void {
     const ni = comptime a.shape[0];
     const nj = comptime b.shape[1];
 
-    const W = Worker(c.dtype, 4);
+    const blockside = calculateBlockside(c.dtype);
+    const W = Worker(@TypeOf(c), @TypeOf(a), @TypeOf(b), 4);
 
-    comptime var bi: usize = 0;
-    inline while (bi < ni) : (bi += W.blockside) {
-        const I = @min(W.blockside, ni - bi);
+    // full macrokernels only
+    var bi: usize = 0;
+    while (bi < ni) : (bi += blockside) {
+        const I = @min(blockside, a.shape[0] - bi);
         const a_stride = a.slice(.{
             .{ bi, bi + I },
             .{ 0, a.shape[1] },
         });
-        comptime var bj: usize = 0;
-        inline while (bj < nj) : (bj += W.blockside) {
-            const J = @min(W.blockside, nj - bj);
+        var bj: usize = 0;
+        while (bj < nj) : (bj += blockside) {
+            const J = @min(blockside, b.shape[1] - bj);
             const b_stride = b.slice(.{
                 .{ 0, b.shape[0] },
                 .{ bj, bj + J },
