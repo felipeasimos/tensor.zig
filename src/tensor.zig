@@ -148,9 +148,9 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             return;
         }
 
-        pub inline fn asVector(self: anytype, comptime N: usize) *@Vector(N, ScalarType) {
+        pub inline fn asVector(self: anytype, comptime N: usize) @Vector(N, ScalarType) {
             std.debug.assert(self.metadata.isContinuous());
-            return self.data[0..N];
+            return self.data[0..N].*;
         }
 
         pub fn SubTensorRef(comptime size: usize) type {
@@ -180,10 +180,18 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             if (comptime n_dims == idxs.len) {
                 return self.scalar(idxs);
             }
-            const strides_to_sub_tensor = comptime utils.asSubVector(usize, self.strides, 0, idxs.len - 1);
-            const start_idx = utils.getIndexAt(idxs, self.strides);
+            const strides_to_sub_tensor: [idxs.len]usize = self.metadata.strides[0..idxs.len].*;
+            const start_idx = utils.getIndexAt(idxs, self.metadata.strides);
             const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
-            return SubTensor(idxs.len).from(self.metadata, self.data[start_idx..final_idx]);
+
+            const NewTensorType = SubTensor(idxs.len);
+            const new_shape = self.metadata.shape[idxs.len..n_dims].*;
+            const new_metadata = switch (utils.MemoryLayout.detectLayout(self.metadata.strides).?) {
+                .RowMajor => NewTensorType.Metadata.rowMajor(new_shape),
+                .ColumnMajor => NewTensorType.Metadata.columnMajor(new_shape),
+            };
+
+            return NewTensorType.from(new_metadata, self.data[start_idx..final_idx]);
         }
 
         pub inline fn ref(self: *@This(), idxs: anytype) SubTensorRef(idxs.len) {
@@ -251,26 +259,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
         }
 
         pub inline fn matmul(self: anytype, io: std.Io, a: anytype, b: anytype) !void {
-            _ = io;
-            // return CPUGEMM(io, self, a, b);
-            // blocked gemm
-            // (P, Q) x (Q, R) -> (P, R)
-            const P = a.metadata.shape[0];
-            const Q = a.metadata.shape[1];
-            const R = b.metadata.shape[1];
-            std.debug.assert(!(self.metadata.shape[0] != P or self.metadata.shape[1] != R or b.metadata.shape[0] != Q));
-            for (0..P) |i| {
-                for (0..R) |j| {
-                    var tmp: @TypeOf(a.data[0]) = 0;
-                    for (0..Q) |k| {
-                        const index_self = utils.getIndexAt(.{ i, k }, a.metadata.strides);
-                        const index_other = utils.getIndexAt(.{ k, j }, b.metadata.strides);
-                        tmp += a.data[index_self] * b.data[index_other];
-                    }
-                    const index_result = utils.getIndexAt(.{ i, j }, self.metadata.strides);
-                    self.data[index_result] = tmp;
-                }
-            }
+            return CPUGEMM(io, self, a, b);
         }
 
         fn TupleOfIteratorsAndResults(tupleType: type, iteratorType: iterator.IteratorType) struct { type, type } {
@@ -388,6 +377,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
         fn checkSliceRanges(self: *const @This(), ranges: anytype) bool {
             inline for (ranges, 0..) |range, i| {
                 if (range[1] <= range[0] or range[1] > self.metadata.shape[i]) {
+                    std.debug.print("invalid ranges for shape ({any}): {any}", .{ self.metadata.shape, ranges });
                     return false;
                 }
             }

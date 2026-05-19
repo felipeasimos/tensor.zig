@@ -1,6 +1,7 @@
 const std = @import("std");
 const expectEqual = std.testing.expectEqual;
 const expect = std.testing.expect;
+const expectApproxEqAbs = std.testing.expectApproxEqAbs;
 const Tensor = @import("tensor").Tensor;
 const op = @import("tensor").op;
 
@@ -11,6 +12,8 @@ fn createSequence(comptime dtype: type, comptime n: usize) [n]dtype {
     }
     return seq;
 }
+
+const tolerance = 10e-100;
 
 test "ref operations - scalar access" {
     var data: [4]f64 = createSequence(f64, 4);
@@ -167,4 +170,174 @@ test "Tensor operations - all const operations" {
     try expectEqual(data[1], reshaped.scalar(.{1}));
     try expectEqual(data[2], reshaped.scalar(.{2}));
     try expectEqual(data[3], reshaped.scalar(.{3}));
+}
+
+test "ref operations - matmulNew rectangular" {
+    var data1 = [_]f64{
+        1, 2,
+        3, 4,
+        5, 6,
+    };
+    var data2 = [_]f64{
+        7,  8,  9,  10,
+        11, 12, 13, 14,
+    };
+
+    var tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 3, 2 }), data1[0..]);
+    var tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 2, 4 }), data2[0..]);
+
+    const ref1 = tensor1.ref(.{});
+    const ref2 = tensor2.ref(.{});
+
+    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    defer result.deinit(std.testing.allocator);
+
+    try expectEqual(.{ 3, 4 }, result.metadata.shape);
+
+    try expectApproxEqAbs(29, result.scalar(.{ 0, 0 }), tolerance);
+    try expectApproxEqAbs(32, result.scalar(.{ 0, 1 }), tolerance);
+    try expectApproxEqAbs(35, result.scalar(.{ 0, 2 }), tolerance);
+    try expectApproxEqAbs(38, result.scalar(.{ 0, 3 }), tolerance);
+
+    try expectApproxEqAbs(65, result.scalar(.{ 1, 0 }), tolerance);
+    try expectApproxEqAbs(72, result.scalar(.{ 1, 1 }), tolerance);
+    try expectApproxEqAbs(79, result.scalar(.{ 1, 2 }), tolerance);
+    try expectApproxEqAbs(86, result.scalar(.{ 1, 3 }), tolerance);
+
+    try expectApproxEqAbs(101, result.scalar(.{ 2, 0 }), tolerance);
+    try expectApproxEqAbs(112, result.scalar(.{ 2, 1 }), tolerance);
+    try expectApproxEqAbs(123, result.scalar(.{ 2, 2 }), tolerance);
+    try expectApproxEqAbs(134, result.scalar(.{ 2, 3 }), tolerance);
+}
+
+test "ref operations - matmulNew identity" {
+    var data1 = [_]f64{
+        1, 2, 3,
+        4, 5, 6,
+        7, 8, 9,
+    };
+
+    var identity = [_]f64{
+        1, 0, 0,
+        0, 1, 0,
+        0, 0, 1,
+    };
+
+    var tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 3, 3 }), data1[0..]);
+    var tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 3, 3 }), identity[0..]);
+
+    const ref1 = tensor1.ref(.{});
+    const ref2 = tensor2.ref(.{});
+
+    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    defer result.deinit(std.testing.allocator);
+
+    try expectEqual(.{ 3, 3 }, result.metadata.shape);
+
+    inline for (0..3) |i| {
+        inline for (0..3) |j| {
+            try expectApproxEqAbs(
+                tensor1.scalar(.{ i, j }),
+                result.scalar(.{ i, j }),
+                tolerance,
+            );
+        }
+    }
+}
+
+test "ref operations - matmulNew zero matrix" {
+    var data1 = [_]f64{
+        1, 2, 3,
+        4, 5, 6,
+    };
+
+    var zeros = [_]f64{0} ** 12;
+
+    var tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 2, 3 }), data1[0..]);
+    var tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 3, 4 }), zeros[0..]);
+
+    const ref1 = tensor1.ref(.{});
+    const ref2 = tensor2.ref(.{});
+
+    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    defer result.deinit(std.testing.allocator);
+
+    try expectEqual(.{ 2, 4 }, result.metadata.shape);
+
+    inline for (0..2) |i| {
+        inline for (0..4) |j| {
+            try std.testing.expectApproxEqAbs(0, result.scalar(.{ i, j }), tolerance);
+        }
+    }
+}
+
+test "ref operations - matmulNew 1x1" {
+    var data1 = [_]f64{6};
+    var data2 = [_]f64{7};
+
+    var tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 1, 1 }), data1[0..]);
+    var tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 1, 1 }), data2[0..]);
+
+    const ref1 = tensor1.ref(.{});
+    const ref2 = tensor2.ref(.{});
+
+    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    defer result.deinit(std.testing.allocator);
+
+    try expectEqual(.{ 1, 1 }, result.metadata.shape);
+    try expectApproxEqAbs(42, result.scalar(.{ 0, 0 }), tolerance);
+}
+
+test "ref operations - matmulNew non square inner dimension" {
+    var data1 = [_]f64{
+        1, 2, 3, 4,
+    };
+
+    var data2 = [_]f64{
+        5,
+        6,
+        7,
+        8,
+    };
+
+    var tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 1, 4 }), data1[0..]);
+    var tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 4, 1 }), data2[0..]);
+
+    const ref1 = tensor1.ref(.{});
+    const ref2 = tensor2.ref(.{});
+
+    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    defer result.deinit(std.testing.allocator);
+
+    try expectEqual(.{ 1, 1 }, result.metadata.shape);
+    try expectApproxEqAbs(70, result.scalar(.{ 0, 0 }), tolerance);
+}
+
+test "ref operations - matmulNew negative values" {
+    var data1 = [_]f64{
+        1, -2,
+        3, -4,
+    };
+
+    var data2 = [_]f64{
+        5,  6,
+        -7, 8,
+    };
+
+    var tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), data1[0..]);
+    var tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), data2[0..]);
+
+    const ref1 = tensor1.ref(.{});
+    const ref2 = tensor2.ref(.{});
+
+    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    defer result.deinit(std.testing.allocator);
+
+    try expectEqual(.{ 2, 2 }, result.metadata.shape);
+
+    try expectApproxEqAbs(19, result.scalar(.{ 0, 0 }), tolerance);
+    try expectApproxEqAbs(-10, result.scalar(.{ 0, 1 }), tolerance);
+
+    try expectApproxEqAbs(43, result.scalar(.{ 1, 0 }), tolerance);
+    try expectApproxEqAbs(-14, result.scalar(.{ 1, 1 }), tolerance);
 }
