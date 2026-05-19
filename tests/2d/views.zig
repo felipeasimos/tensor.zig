@@ -127,7 +127,7 @@ test "ref operations - matmul" {
     var result_data: [6]f64 = .{0} ** 6;
     var result = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), result_data[0..]);
 
-    try result.matmul(std.testing.io, &ref1, &ref2);
+    try result.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
 
     try expectEqual(10, result.scalar(.{ 0, 0 }));
     try expectEqual(13, result.scalar(.{ 0, 1 }));

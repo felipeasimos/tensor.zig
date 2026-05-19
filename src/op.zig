@@ -41,7 +41,7 @@ pub inline fn matmul(allocator: std.mem.Allocator, io: std.Io, a: anytype, b: an
         a.metadata.shape[0],
         b.metadata.shape[1],
     }));
-    try result.matmul(io, a, b);
+    try result.matmul(allocator, io, a, b);
     return result;
 }
 

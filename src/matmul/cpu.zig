@@ -77,9 +77,14 @@ fn WorkerRowMajor(comptime T: type, comptime n_accumulators: usize) type {
             }
         }
 
-        pub fn macrokernel(c: tensor.Tensor(T, 2), a: tensor.Tensor(T, 2), b: tensor.Tensor(T, 2)) void {
+        pub fn macrokernel(allocator: std.mem.Allocator, c: tensor.Tensor(T, 2), unpacked_a: tensor.Tensor(T, 2), unpacked_b: tensor.Tensor(T, 2)) void {
             const row_remainder = c.metadata.shape[0] % n_accumulators;
             const column_remainder = c.metadata.shape[1] % VecLen;
+
+            var a = unpacked_a.pack(allocator, .ColumnMajor) catch @panic("Couldn't allocate memory for packed A");
+            defer a.deinit(allocator);
+            var b = unpacked_b.pack(allocator, .RowMajor) catch @panic("Couldn't allocate memory for packed B");
+            defer b.deinit(allocator);
 
             // full part
             if (c.metadata.shape[0] > n_accumulators and c.metadata.shape[1] > VecLen) {
@@ -222,47 +227,60 @@ fn checkDimensions(c: anytype, a: anytype, b: anytype) bool {
     return true;
 }
 
-/// TODO: un-unroll loops
-/// TODO: column major friendly
+/// TODO: actually pack the results
+/// TODO: make it work for column major (WorkerColumnMajor is WIP)
 /// C is (i, j) (row-major)
 /// A is (i, k) (row-major)
 /// B is (k, j) (column-major)
-pub fn matmul(io: std.Io, c: anytype, a: anytype, b: anytype) !void {
+pub fn matmul(allocator: std.mem.Allocator, io: std.Io, c: anytype, a: anytype, b: anytype) !void {
     std.debug.assert(checkDimensions(c, a, b));
     var group = std.Io.Group.init;
 
     const ni = a.metadata.shape[0];
     const nj = b.metadata.shape[1];
 
-    const W = WorkerRowMajor(utils.getChildType(@TypeOf(c)).ScalarType, 4);
-
-    // full macrokernels only
-    var bi: usize = 0;
-    while (bi < ni) : (bi += W.blockside) {
-        const I = @min(W.blockside, a.metadata.shape[0] - bi);
-        const a_stride = a.slice(.{
-            .{ bi, bi + I },
-            .{ 0, a.metadata.shape[1] },
-        });
-        if (I == 0) continue;
-        var bj: usize = 0;
-        while (bj < nj) : (bj += W.blockside) {
-            const J = @min(W.blockside, b.metadata.shape[1] - bj);
-            if (J == 0) continue;
-            const b_stride = b.slice(.{
-                .{ 0, b.metadata.shape[0] },
-                .{ bj, bj + J },
-            });
-            const c_tile = c.slice(.{
-                .{ bi, bi + I },
-                .{ bj, bj + J },
-            });
-            try group.concurrent(io, W.macrokernel, .{
-                c_tile,
-                a_stride,
-                b_stride,
-            });
+    const major: utils.MemoryLayout = major: {
+        const opt = utils.MemoryLayout.detectLayout(c.metadata.strides);
+        if (opt) |major| {
+            break :major major;
         }
+        break :major .RowMajor;
+    };
+    switch (major) {
+        inline else => |M| {
+            const Worker = if (M == .RowMajor) WorkerRowMajor else WorkerRowMajor;
+            const W = Worker(utils.getChildType(@TypeOf(c)).ScalarType, 4);
+
+            // full macrokernels only
+            var bi: usize = 0;
+            while (bi < ni) : (bi += W.blockside) {
+                const I = @min(W.blockside, a.metadata.shape[0] - bi);
+                const a_stride = a.slice(.{
+                    .{ bi, bi + I },
+                    .{ 0, a.metadata.shape[1] },
+                });
+                if (I == 0) continue;
+                var bj: usize = 0;
+                while (bj < nj) : (bj += W.blockside) {
+                    const J = @min(W.blockside, b.metadata.shape[1] - bj);
+                    if (J == 0) continue;
+                    const b_stride = b.slice(.{
+                        .{ 0, b.metadata.shape[0] },
+                        .{ bj, bj + J },
+                    });
+                    const c_tile = c.slice(.{
+                        .{ bi, bi + I },
+                        .{ bj, bj + J },
+                    });
+                    try group.concurrent(io, W.macrokernel, .{
+                        allocator,
+                        c_tile,
+                        a_stride,
+                        b_stride,
+                    });
+                }
+            }
+        },
     }
 
     try group.await(io);

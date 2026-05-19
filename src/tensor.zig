@@ -11,11 +11,32 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
         pub const Marker: @TypeOf(Tensor) = Tensor;
         pub const ScalarType: type = ElementType;
         pub const n_dims: usize = NDims;
+        pub const ElemHasFormat: bool = has_format: {
+            break :has_format switch (@typeInfo(ElementType)) {
+                .@"struct", .@"enum", .@"union", .@"opaque" => @hasDecl(ElementType, "format"),
+                else => false,
+            };
+        };
 
         /// runtime metadata values
         pub const Metadata = struct {
             strides: [n_dims]usize,
             shape: [n_dims]usize,
+            pub fn eql(self: @This(), other: @This()) bool {
+                for (self.strides, other.strides) |s, o| {
+                    if (s != o) return false;
+                }
+                for (self.shape, other.shape) |s, o| {
+                    if (s != o) return false;
+                }
+                return true;
+            }
+            pub fn major(layout: utils.MemoryLayout, shape: [n_dims]usize) @This() {
+                return switch (layout) {
+                    .ColumnMajor => columnMajor(shape),
+                    .RowMajor => rowMajor(shape),
+                };
+            }
             pub fn rowMajor(shape: [n_dims]usize) @This() {
                 return .{
                     .shape = shape,
@@ -134,7 +155,18 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             }
         }
 
+        fn checkIndexOutOfBounds(self: *const @This(), idxs: anytype) bool {
+            if (idxs.len > n_dims) return false;
+            for (idxs, 0..) |d, i| {
+                if (d >= self.metadata.shape[i]) {
+                    return false;
+                }
+            }
+            return true;
+        }
+
         pub inline fn scalar(self: *const @This(), idxs: [n_dims]usize) ScalarType {
+            std.debug.assert(self.checkIndexOutOfBounds(idxs));
             const idx = utils.getIndexAt(idxs, self.metadata.strides);
             return self.data[idx];
         }
@@ -216,14 +248,13 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
         }
 
         /// get a subtensor. `idxs` needs to be an array.
-        pub inline fn clone(self: *const @This(), allocator: std.mem.Allocator, idxs: anytype) SubTensor(idxs.len) {
+        pub inline fn clone(self: *const @This(), allocator: std.mem.Allocator, idxs: anytype) !SubTensor(idxs.len) {
             if (comptime n_dims == idxs.len) {
                 return self.scalar(idxs);
             }
-            const reference = self.ref(idxs);
-            const new = @TypeOf(reference).alloc(allocator, reference.metadata, reference.data);
-            new.copy(reference);
-            return new;
+            var clone_ptr = try alloc(allocator, self.metadata);
+            clone_ptr.copy(self);
+            return clone_ptr;
         }
 
         pub inline fn reshape(self: *const @This(), new_shape: anytype) Tensor(ScalarType, new_shape.len) {
@@ -247,19 +278,37 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             @compileError(std.fmt.comptimePrint("Invalid operand type {} for {}", .{ T, @This() }));
         }
 
-        pub inline fn copy(self: anytype, other: anytype) void {
-            comptime var self_it = utils.getChildType(@TypeOf(self)).indicesIter();
-            comptime var from_it = utils.getChildType(@TypeOf(other)).indicesIter();
-            inline while (comptime self_it.next()) |self_indices| {
-                const from_indices = comptime from_it.next().?;
-                const self_idx = comptime utils.getIndexAt(self_indices, self.strides);
-                const from_idx = comptime utils.getIndexAt(from_indices, other.strides);
-                self.data[self_idx] = other.data[from_idx];
+        pub inline fn copy(self: *@This(), other: *const Tensor(ScalarType, n_dims)) void {
+            std.debug.assert(self.metadata.eql(other.metadata));
+            self._copy(other);
+        }
+
+        /// doesn't have assert check, which allows it to be use by things like 'pack'
+        inline fn _copy(self: *@This(), other: *const Tensor(ScalarType, n_dims)) void {
+            var self_it = other.indicesIter();
+            var from_it = other.indicesIter();
+
+            while (self_it.next()) |self_indices| {
+                const from_indices = from_it.next().?;
+                // will work for things like 'pack', since we abstract over majors!
+                self.scalarRef(self_indices).* = other.scalar(from_indices);
             }
         }
 
-        pub inline fn matmul(self: anytype, io: std.Io, a: anytype, b: anytype) !void {
-            return CPUGEMM(io, self, a, b);
+        /// copy contents into a tensor with the desired major
+        pub inline fn pack(self: *const @This(), allocator: std.mem.Allocator, major: utils.MemoryLayout) !@This() {
+            const current_layout = utils.MemoryLayout.detectLayout(self.metadata.strides);
+            if (current_layout == major) return self.clone(allocator, .{});
+            const new_metadata = Metadata.major(major, self.metadata.shape);
+            var clone_ptr = try alloc(allocator, new_metadata);
+            clone_ptr._copy(self);
+            return clone_ptr;
+        }
+
+        /// high performance multithreaded CPU GEMM
+        /// allocator is needed to pack major friendly matrices inside
+        pub inline fn matmul(self: anytype, allocator: std.mem.Allocator, io: std.Io, a: anytype, b: anytype) !void {
+            return CPUGEMM(allocator, io, self, a, b);
         }
 
         fn TupleOfIteratorsAndResults(tupleType: type, iteratorType: iterator.IteratorType) struct { type, type } {
@@ -463,6 +512,67 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
 
         pub inline fn subTensorIter(self: *const @This()) iterator.SubTensorIterator(@This()) {
             return .init(self);
+        }
+
+        pub fn format(self: *const @This(), writer: anytype) !void {
+            var indices: [n_dims]usize = [_]usize{0} ** n_dims;
+
+            try self.formatRecursive(writer, 0, &indices);
+            try writer.writeByte('\n');
+        }
+
+        fn formatRecursive(
+            self: *const @This(),
+            writer: anytype,
+            dim: usize,
+            indices: *[n_dims]usize,
+        ) !void {
+            try writer.writeByte('{');
+
+            // Last dimension: print scalars
+            if (dim == n_dims - 1) {
+                for (0..self.metadata.shape[dim]) |i| {
+                    if (i != 0)
+                        try writer.writeAll(", ");
+
+                    indices[dim] = i;
+
+                    if (comptime ElemHasFormat) {
+                        try writer.print("{f}", .{
+                            self.scalar(indices.*),
+                        });
+                    } else {
+                        try writer.print("{any}", .{
+                            self.scalar(indices.*),
+                        });
+                    }
+                }
+
+                try writer.writeByte('}');
+                return;
+            }
+
+            // Higher dimensions
+            for (0..self.metadata.shape[dim]) |i| {
+                if (i != 0) {
+                    try writer.writeAll(",\n");
+
+                    // indentation
+                    for (0..dim + 1) |_| {
+                        try writer.writeByte('\t');
+                    }
+                }
+
+                indices[dim] = i;
+
+                try self.formatRecursive(
+                    writer,
+                    dim + 1,
+                    indices,
+                );
+            }
+
+            try writer.writeByte('}');
         }
     };
 }

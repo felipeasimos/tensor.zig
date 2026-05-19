@@ -103,15 +103,11 @@ pub fn getTensorInTupleShape(tensorTuple: anytype) [getNumberOfDimensions(@TypeO
 }
 pub fn calculateStridesColumnMajor(shape: anytype) @Vector(shape.len, usize) {
     var strides: [shape.len]usize = .{1} ** shape.len;
+
     for (1..shape.len) |i| {
-        const idx = shape.len - i - 1;
-        strides[idx] = shape[idx + 1] * strides[idx + 1];
+        strides[i] = strides[i - 1] * shape[i - 1];
     }
-    if (shape.len > 1) {
-        const tmp = strides[shape.len - 1];
-        strides[shape.len - 1] = strides[shape.len - 2];
-        strides[shape.len - 2] = tmp;
-    }
+
     return strides;
 }
 

@@ -48,6 +48,43 @@ test "reference operations - ref ref" {
     try expectEqual(800, tensor.scalar(.{ 1, 1, 1 }));
 }
 
+test "reference operations - ref clone" {
+    var data: [8]f64 = createSequence(f64, 8);
+    var original = Tensor(f64, 3).from(.rowMajor(.{ 2, 2, 2 }), data[0..]);
+    var tensor = try original.clone(std.testing.allocator, .{});
+    defer tensor.deinit(std.testing.allocator);
+    var ref = tensor.ref(.{});
+
+    // Test that we can access the data
+    try expectEqual(data[0], ref.scalar(.{ 0, 0, 0 }));
+    try expectEqual(data[1], ref.scalar(.{ 0, 0, 1 }));
+    try expectEqual(data[2], ref.scalar(.{ 0, 1, 0 }));
+    try expectEqual(data[3], ref.scalar(.{ 0, 1, 1 }));
+    try expectEqual(data[4], ref.scalar(.{ 1, 0, 0 }));
+    try expectEqual(data[5], ref.scalar(.{ 1, 0, 1 }));
+    try expectEqual(data[6], ref.scalar(.{ 1, 1, 0 }));
+    try expectEqual(data[7], ref.scalar(.{ 1, 1, 1 }));
+
+    // Test that we can modify the data
+    ref.scalarRef(.{ 0, 0, 0 }).* = 100;
+    ref.scalarRef(.{ 0, 0, 1 }).* = 200;
+    ref.scalarRef(.{ 0, 1, 0 }).* = 300;
+    ref.scalarRef(.{ 0, 1, 1 }).* = 400;
+    ref.scalarRef(.{ 1, 0, 0 }).* = 500;
+    ref.scalarRef(.{ 1, 0, 1 }).* = 600;
+    ref.scalarRef(.{ 1, 1, 0 }).* = 700;
+    ref.scalarRef(.{ 1, 1, 1 }).* = 800;
+
+    try expectEqual(100, tensor.scalar(.{ 0, 0, 0 }));
+    try expectEqual(200, tensor.scalar(.{ 0, 0, 1 }));
+    try expectEqual(300, tensor.scalar(.{ 0, 1, 0 }));
+    try expectEqual(400, tensor.scalar(.{ 0, 1, 1 }));
+    try expectEqual(500, tensor.scalar(.{ 1, 0, 0 }));
+    try expectEqual(600, tensor.scalar(.{ 1, 0, 1 }));
+    try expectEqual(700, tensor.scalar(.{ 1, 1, 0 }));
+    try expectEqual(800, tensor.scalar(.{ 1, 1, 1 }));
+}
+
 test "reference operations - pointer to tensor" {
     var data: [8]f64 = createSequence(f64, 8);
     var tensor = Tensor(f64, 3).from(.rowMajor(.{ 2, 2, 2 }), data[0..]);

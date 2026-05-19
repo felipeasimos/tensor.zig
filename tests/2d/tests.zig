@@ -92,7 +92,7 @@ test "matmul 3x4 4x2" {
 
     var data3: [6]f64 = createSequence(f64, 6);
     var result = Tensor(f64, 2).from(.rowMajor(.{ 3, 2 }), &data3);
-    try result.matmul(std.testing.io, &tensor1, &tensor2);
+    try result.matmul(std.testing.allocator, std.testing.io, &tensor1, &tensor2);
     try expectEqual(result.metadata.shape, [_]usize{ 3, 2 });
 }
 test "matmulNew 3x4 4x2" {
@@ -309,4 +309,68 @@ test "iterator broadcasted tensor" {
         try expectEqual(42, item.value);
     }
     try expectEqual(6, count);
+}
+
+test "clone broadcast" {
+    var data: [1]f64 = .{42};
+    var tensor = Tensor(f64, 2).from(.rowMajor(.{ 1, 1 }), data[0..]);
+    var broadcasted = tensor.broadcast(.{ 2, 3 });
+
+    var clone = try broadcasted.clone(std.testing.allocator, .{});
+    defer clone.deinit(std.testing.allocator);
+
+    var iter = clone.iter();
+
+    var count: usize = 0;
+    while (iter.next()) |item| {
+        count += 1;
+        try expectEqual(42, item.value);
+    }
+    try expectEqual(6, count);
+}
+
+test "colum major" {
+    var data = createSequence(f64, 12);
+    const tensor: Tensor(f64, 2) = .from(.columnMajor(.{ 4, 3 }), data[0..]);
+    try expectEqual(.{ 4, 3 }, tensor.metadata.shape);
+    try expectEqual(.{ 1, 4 }, tensor.metadata.strides);
+
+    try expectEqual(0, tensor.scalar(.{ 0, 0 }));
+    try expectEqual(1, tensor.scalar(.{ 1, 0 }));
+    try expectEqual(2, tensor.scalar(.{ 2, 0 }));
+    try expectEqual(3, tensor.scalar(.{ 3, 0 }));
+
+    try expectEqual(4, tensor.scalar(.{ 0, 1 }));
+    try expectEqual(5, tensor.scalar(.{ 1, 1 }));
+    try expectEqual(6, tensor.scalar(.{ 2, 1 }));
+    try expectEqual(7, tensor.scalar(.{ 3, 1 }));
+
+    try expectEqual(8, tensor.scalar(.{ 0, 2 }));
+    try expectEqual(9, tensor.scalar(.{ 1, 2 }));
+    try expectEqual(10, tensor.scalar(.{ 2, 2 }));
+    try expectEqual(11, tensor.scalar(.{ 3, 2 }));
+}
+
+test "pack into different major" {
+    var data = createSequence(f64, 12);
+    const original: Tensor(f64, 2) = .from(.columnMajor(.{ 4, 3 }), data[0..]);
+    const tensor = try original.pack(std.testing.allocator, .RowMajor);
+    defer tensor.deinit(std.testing.allocator);
+
+    try expectEqual(.{ 4, 3 }, tensor.metadata.shape);
+    try expectEqual(.{ 3, 1 }, tensor.metadata.strides);
+    try expectEqual(0, tensor.scalar(.{ 0, 0 }));
+    try expectEqual(1, tensor.scalar(.{ 1, 0 }));
+    try expectEqual(2, tensor.scalar(.{ 2, 0 }));
+    try expectEqual(3, tensor.scalar(.{ 3, 0 }));
+
+    try expectEqual(4, tensor.scalar(.{ 0, 1 }));
+    try expectEqual(5, tensor.scalar(.{ 1, 1 }));
+    try expectEqual(6, tensor.scalar(.{ 2, 1 }));
+    try expectEqual(7, tensor.scalar(.{ 3, 1 }));
+
+    try expectEqual(8, tensor.scalar(.{ 0, 2 }));
+    try expectEqual(9, tensor.scalar(.{ 1, 2 }));
+    try expectEqual(10, tensor.scalar(.{ 2, 2 }));
+    try expectEqual(11, tensor.scalar(.{ 3, 2 }));
 }
