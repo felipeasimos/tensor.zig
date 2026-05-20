@@ -79,7 +79,7 @@ test "element wise operation with a scalar (wise - in place)" {
     defer tensor1.deinit(std.testing.allocator);
     var result = try Tensor(f64, 1).dupe(std.testing.allocator, .rowMajor(.{3}), data[0..]);
     defer result.deinit(std.testing.allocator);
-    result.wise(.{ @as(u32, 2), tensor1.ref(.{}) }, (struct {
+    _ = result.wise(.{ @as(u32, 2), tensor1.ref(.{}) }, (struct {
         pub fn func(args: struct { u32, f64 }) f64 {
             const a, const b = args;
             return @as(f64, @floatFromInt(a)) + b;
@@ -97,7 +97,7 @@ test "element wise operation with a tensor (wise - in place)" {
     defer tensor2.deinit(std.testing.allocator);
     var result = try Tensor(f64, 1).dupe(std.testing.allocator, .rowMajor(.{3}), data[0..]);
     defer result.deinit(std.testing.allocator);
-    result.wise(.{ tensor1.ref(.{}), tensor2.ref(.{}) }, (struct {
+    _ = result.wise(.{ tensor1.ref(.{}), tensor2.ref(.{}) }, (struct {
         pub fn func(args: struct { f64, f64 }) f64 {
             const a, const b = args;
             return a + b;
@@ -137,7 +137,7 @@ test "wiseNew element-wise addition with tensor" {
     var tensor2 = Tensor(f64, 1).from(.rowMajor(.{3}), data2[0..]);
     var result: Tensor(f64, 1) = try .zeroes(std.testing.allocator, .rowMajor(.{3}));
     defer result.deinit(std.testing.allocator);
-    result.wise(.{ tensor1.ref(.{}), tensor2.ref(.{}) }, (struct {
+    _ = result.wise(.{ tensor1.ref(.{}), tensor2.ref(.{}) }, (struct {
         pub fn func(args: struct { f64, f64 }) f64 {
             const a, const b = args;
             return a + b;
@@ -247,7 +247,7 @@ test "reduce with scalar product - in place" {
         }
     }).func);
 
-    try expectEqual(24, result.constRef(.{0}));
+    try expectEqual(24, result.scalar(.{0}));
 }
 
 test "reduce with scalar product - in place using address of tensor" {

@@ -51,7 +51,7 @@ test "ref operations - wise" {
     var result = try Tensor(f64, 2).alloc(std.testing.allocator, .rowMajor(.{ 2, 2 }));
     defer result.deinit(std.testing.allocator);
 
-    result.wise(.{ &ref1, &ref2 }, (struct {
+    _ = result.wise(.{ &ref1, &ref2 }, (struct {
         pub fn func(args: struct { f64, f64 }) f64 {
             const a, const b = args;
             return a + b;
@@ -127,7 +127,7 @@ test "ref operations - matmul" {
     var result_data: [6]f64 = .{0} ** 6;
     var result = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), result_data[0..]);
 
-    try result.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    try result.matmul(std.testing.allocator, std.testing.io, ref1, ref2);
 
     try expectEqual(10, result.scalar(.{ 0, 0 }));
     try expectEqual(13, result.scalar(.{ 0, 1 }));
@@ -143,7 +143,7 @@ test "ref operations - matmulNew" {
     const ref1 = tensor1.ref(.{});
     const ref2 = tensor2.ref(.{});
 
-    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    const result = try op.matmul(std.testing.allocator, std.testing.io, ref1, ref2);
     defer result.deinit(std.testing.allocator);
 
     try expectEqual(.{ 2, 2 }, result.metadata.shape);
@@ -189,7 +189,7 @@ test "ref operations - matmulNew rectangular" {
     const ref1 = tensor1.ref(.{});
     const ref2 = tensor2.ref(.{});
 
-    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    const result = try op.matmul(std.testing.allocator, std.testing.io, ref1, ref2);
     defer result.deinit(std.testing.allocator);
 
     try expectEqual(.{ 3, 4 }, result.metadata.shape);
@@ -229,7 +229,7 @@ test "ref operations - matmulNew identity" {
     const ref1 = tensor1.ref(.{});
     const ref2 = tensor2.ref(.{});
 
-    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    const result = try op.matmul(std.testing.allocator, std.testing.io, ref1, ref2);
     defer result.deinit(std.testing.allocator);
 
     try expectEqual(.{ 3, 3 }, result.metadata.shape);
@@ -259,7 +259,7 @@ test "ref operations - matmulNew zero matrix" {
     const ref1 = tensor1.ref(.{});
     const ref2 = tensor2.ref(.{});
 
-    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    const result = try op.matmul(std.testing.allocator, std.testing.io, ref1, ref2);
     defer result.deinit(std.testing.allocator);
 
     try expectEqual(.{ 2, 4 }, result.metadata.shape);
@@ -281,7 +281,7 @@ test "ref operations - matmulNew 1x1" {
     const ref1 = tensor1.ref(.{});
     const ref2 = tensor2.ref(.{});
 
-    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    const result = try op.matmul(std.testing.allocator, std.testing.io, ref1, ref2);
     defer result.deinit(std.testing.allocator);
 
     try expectEqual(.{ 1, 1 }, result.metadata.shape);
@@ -306,7 +306,7 @@ test "ref operations - matmulNew non square inner dimension" {
     const ref1 = tensor1.ref(.{});
     const ref2 = tensor2.ref(.{});
 
-    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    const result = try op.matmul(std.testing.allocator, std.testing.io, ref1, ref2);
     defer result.deinit(std.testing.allocator);
 
     try expectEqual(.{ 1, 1 }, result.metadata.shape);
@@ -330,7 +330,7 @@ test "ref operations - matmulNew negative values" {
     const ref1 = tensor1.ref(.{});
     const ref2 = tensor2.ref(.{});
 
-    const result = try op.matmul(std.testing.allocator, std.testing.io, &ref1, &ref2);
+    const result = try op.matmul(std.testing.allocator, std.testing.io, ref1, ref2);
     defer result.deinit(std.testing.allocator);
 
     try expectEqual(.{ 2, 2 }, result.metadata.shape);

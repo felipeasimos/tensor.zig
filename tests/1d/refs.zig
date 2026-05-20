@@ -63,7 +63,7 @@ test "reference operations - wise through reference" {
     var result = try Tensor(f64, 1).alloc(std.testing.allocator, .rowMajor(.{3}));
     defer result.deinit(std.testing.allocator);
 
-    result.wise(.{ tensor1_ref, tensor2_ref }, func.addFactory(f64, 2));
+    _ = result.wise(.{ tensor1_ref, tensor2_ref }, func.addFactory(f64, 2));
 
     try expectEqual(10, result.constRef(.{0}));
     try expectEqual(21, result.constRef(.{1}));
@@ -86,7 +86,7 @@ test "reference operations - wiseNew through reference" {
     }).func);
     defer result.deinit(std.testing.allocator);
 
-    try expectEqual(10, result.constRef(.{0}));
-    try expectEqual(21, result.constRef(.{1}));
-    try expectEqual(32, result.constRef(.{2}));
+    try expectEqual(10, result.scalar(.{0}));
+    try expectEqual(21, result.scalar(.{1}));
+    try expectEqual(32, result.scalar(.{2}));
 }

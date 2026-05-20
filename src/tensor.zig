@@ -68,7 +68,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
         metadata: Metadata,
         data: []ScalarType,
 
-        pub fn randomize(self: *@This(), rand: std.Random) void {
+        pub fn randomize(self: *const @This(), rand: std.Random) @This() {
             const sampler = comptime switch (@typeInfo(ScalarType)) {
                 .comptime_int, .int => struct {
                     inline fn sample(r: std.Random) ScalarType {
@@ -95,6 +95,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             while (it.next()) |data_ptr| {
                 data_ptr.* = sampler(rand);
             }
+            return self.*;
         }
 
         pub fn from(metadata: Metadata, data: []ScalarType) @This() {
@@ -147,12 +148,13 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             allocator.free(self.data);
         }
 
-        pub fn memset(self: *@This(), value: ScalarType) @This() {
+        pub fn memset(self: *const @This(), value: ScalarType) @This() {
             var self_it = utils.getChildType(@TypeOf(self)).indicesIter();
             while (self_it.next()) |self_indices| {
                 const self_idx = utils.getIndexAt(self_indices, self.strides);
                 self.data[self_idx] = value;
             }
+            return self;
         }
 
         fn checkIndexOutOfBounds(self: *const @This(), idxs: anytype) bool {
@@ -226,7 +228,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             return NewTensorType.from(new_metadata, self.data[start_idx..final_idx]);
         }
 
-        pub inline fn ref(self: *@This(), idxs: anytype) SubTensorRef(idxs.len) {
+        pub inline fn ref(self: *const @This(), idxs: anytype) SubTensorRef(idxs.len) {
             if (comptime idxs.len == 0) {
                 return .from(self.metadata, self.data);
             }
@@ -253,7 +255,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
                 return self.scalar(idxs);
             }
             var clone_ptr = try alloc(allocator, self.metadata);
-            clone_ptr.copy(self);
+            _ = clone_ptr.copy(self);
             return clone_ptr;
         }
 
@@ -268,23 +270,14 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             return result;
         }
 
-        fn otherValue(other: anytype, i: usize) ScalarType {
-            const T = @TypeOf(other);
-            switch (@typeInfo(T)) {
-                .comptime_int, .comptime_float, .int, .float => return other,
-                .pointer, .@"struct" => return other.data[i],
-                inline else => other,
-            }
-            @compileError(std.fmt.comptimePrint("Invalid operand type {} for {}", .{ T, @This() }));
-        }
-
-        pub inline fn copy(self: *@This(), other: *const Tensor(ScalarType, n_dims)) void {
+        pub inline fn copy(self: *const @This(), other: *const Tensor(ScalarType, n_dims)) @This() {
             std.debug.assert(self.metadata.eql(other.metadata));
             self._copy(other);
+            return self.*;
         }
 
         /// doesn't have assert check, which allows it to be use by things like 'pack'
-        inline fn _copy(self: *@This(), other: *const Tensor(ScalarType, n_dims)) void {
+        inline fn _copy(self: *const @This(), other: *const Tensor(ScalarType, n_dims)) void {
             var self_it = other.indicesIter();
             var from_it = other.indicesIter();
 
@@ -307,7 +300,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
 
         /// high performance multithreaded CPU GEMM
         /// allocator is needed to pack major friendly matrices inside
-        pub inline fn matmul(self: anytype, allocator: std.mem.Allocator, io: std.Io, a: anytype, b: anytype) !void {
+        pub inline fn matmul(self: *const @This(), allocator: std.mem.Allocator, io: std.Io, a: Tensor(ScalarType, 2), b: Tensor(ScalarType, 2)) !void {
             return CPUGEMM(allocator, io, self, a, b);
         }
 
@@ -329,7 +322,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             return .{ @Tuple(iterTypes), @Tuple(dtypes) };
         }
 
-        pub inline fn wise(self: *@This(), tuple: anytype, f: anytype) void {
+        pub inline fn wise(self: *const @This(), tuple: anytype, f: anytype) @This() {
             if (comptime !utils.isTuple(@TypeOf(tuple))) {
                 @compileError("argument should be a tuple");
             }
@@ -351,6 +344,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
                 }
                 self.scalarRef(result_idxs).* = f(dtypes);
             }
+            return self.*;
         }
 
         fn initTupleIterators(tuple: anytype, iters: anytype) void {
@@ -377,7 +371,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             }
         }
 
-        pub inline fn reduce(self: *@This(), initial: anytype, tuple: anytype, f: anytype) void {
+        pub inline fn reduce(self: *const @This(), initial: anytype, tuple: anytype, f: anytype) void {
             const AccumulatorType = @TypeOf(initial);
             if (comptime !utils.isTuple(@TypeOf(tuple))) {
                 @compileError("argument should be a tuple");
@@ -502,7 +496,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             return .init(self);
         }
 
-        pub inline fn dataRefIter(self: *@This()) iterator.DataIterator(@This()) {
+        pub inline fn dataRefIter(self: *const @This()) iterator.DataIterator(@This()) {
             return .init(self);
         }
 

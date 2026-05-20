@@ -50,6 +50,5 @@ pub inline fn wise(allocator: std.mem.Allocator, tensors: anytype, f: anytype) !
     const n_dims = comptime utils.getNumberOfDimensions(@TypeOf(tensors));
     const result_shape = utils.getTensorInTupleShape(tensors);
     var result: tensor.Tensor(Dtype, n_dims) = try .alloc(allocator, .rowMajor(result_shape));
-    result.wise(tensors, f);
-    return result;
+    return result.wise(tensors, f);
 }

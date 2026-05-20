@@ -22,7 +22,7 @@ fn WorkerRowMajor(comptime T: type, comptime n_accumulators: usize) type {
         pub const blockside = calculateBlockside(T);
 
         /// operate on a single C tile, using its associated A and B strides
-        fn macrokernelFull(c: *tensor.Tensor(T, 2), a: tensor.Tensor(T, 2), b: tensor.Tensor(T, 2)) void {
+        fn macrokernelFull(c: *const tensor.Tensor(T, 2), a: tensor.Tensor(T, 2), b: tensor.Tensor(T, 2)) void {
             var i: usize = 0;
             while (i < a.metadata.shape[0]) : (i += n_accumulators) {
                 const a_microstride = a.slice(.{
@@ -49,7 +49,7 @@ fn WorkerRowMajor(comptime T: type, comptime n_accumulators: usize) type {
         }
 
         /// operate on a single C tile, using its associated A and B strides
-        fn macrokernelPartial(c: *tensor.Tensor(T, 2), a: tensor.Tensor(T, 2), b: tensor.Tensor(T, 2)) void {
+        fn macrokernelPartial(c: *const tensor.Tensor(T, 2), a: tensor.Tensor(T, 2), b: tensor.Tensor(T, 2)) void {
             var i: usize = 0;
             while (i < a.metadata.shape[0]) : (i += n_accumulators) {
                 const I = @min(i + n_accumulators, a.metadata.shape[0]);
@@ -131,14 +131,14 @@ fn WorkerRowMajor(comptime T: type, comptime n_accumulators: usize) type {
             }
         }
         /// no edge cases, full SIMD
-        fn microkernelFull(c: *tensor.Tensor(T, 2), a: tensor.Tensor(T, 2), b: tensor.Tensor(T, 2)) void {
+        fn microkernelFull(c: *const tensor.Tensor(T, 2), a: tensor.Tensor(T, 2), b: tensor.Tensor(T, 2)) void {
             var accs: [n_accumulators]@Vector(VecLen, T) = .{.{0} ** VecLen} ** n_accumulators;
 
             var k: usize = 0;
             while (k < a.metadata.shape[1]) : (k += 1) {
                 inline for (0..n_accumulators) |acc_idx| {
                     const a_splat: @Vector(VecLen, T) = @splat(a.scalar(.{ acc_idx, k }));
-                    const b_row: @Vector(VecLen, T) = b.constRef(.{k}).asVector(VecLen);
+                    const b_row: @Vector(VecLen, T) = b.ref(.{k}).asVector(VecLen);
 
                     accs[acc_idx] = switch (@typeInfo(T)) {
                         .float => @mulAdd(@Vector(VecLen, T), a_splat, b_row, accs[acc_idx]),
@@ -159,7 +159,7 @@ fn WorkerRowMajor(comptime T: type, comptime n_accumulators: usize) type {
             }
         }
         /// no edge cases, full SIMD
-        fn microkernelPartial(c: *tensor.Tensor(T, 2), a: tensor.Tensor(T, 2), b: tensor.Tensor(T, 2)) void {
+        fn microkernelPartial(c: *const tensor.Tensor(T, 2), a: tensor.Tensor(T, 2), b: tensor.Tensor(T, 2)) void {
             switch (b.metadata.shape[1]) {
                 inline 0...VecLen => |N| {
                     var accs: [n_accumulators]@Vector(N, T) = .{.{0} ** N} ** n_accumulators;
@@ -167,7 +167,7 @@ fn WorkerRowMajor(comptime T: type, comptime n_accumulators: usize) type {
                     while (k < a.metadata.shape[1]) : (k += 1) {
                         for (0..a.metadata.shape[0]) |acc_idx| {
                             const a_splat: @Vector(N, T) = @splat(a.scalar(.{ acc_idx, k }));
-                            const b_row: @Vector(N, T) = b.constRef(.{k}).asVector(N);
+                            const b_row: @Vector(N, T) = b.ref(.{k}).asVector(N);
 
                             accs[acc_idx] = switch (@typeInfo(T)) {
                                 .float => @mulAdd(@Vector(N, T), a_splat, b_row, accs[acc_idx]),
@@ -188,27 +188,6 @@ fn WorkerRowMajor(comptime T: type, comptime n_accumulators: usize) type {
                     }
                 },
                 else => @panic("microkernelPartial for row major shouldn't be called when number of columns in B is greater than VecLen"),
-            }
-        }
-        pub inline fn naive(c: *tensor.Tensor(T, 2), a: tensor.Tensor(T, 2), b: tensor.Tensor(T, 2)) void {
-            // return CPUGEMM(io, self, a, b);
-            // blocked gemm
-            // (P, Q) x (Q, R) -> (P, R)
-            const P = a.metadata.shape[0];
-            const Q = a.metadata.shape[1];
-            const R = b.metadata.shape[1];
-            std.debug.assert(!(c.metadata.shape[0] != P or c.metadata.shape[1] != R or b.metadata.shape[0] != Q));
-            for (0..P) |i| {
-                for (0..R) |j| {
-                    var tmp: @TypeOf(a.data[0]) = 0;
-                    for (0..Q) |k| {
-                        const index_self = utils.getIndexAt(.{ i, k }, a.metadata.strides);
-                        const index_other = utils.getIndexAt(.{ k, j }, b.metadata.strides);
-                        tmp += a.data[index_self] * b.data[index_other];
-                    }
-                    const index_result = utils.getIndexAt(.{ i, j }, c.metadata.strides);
-                    c.data[index_result] = tmp;
-                }
             }
         }
     };

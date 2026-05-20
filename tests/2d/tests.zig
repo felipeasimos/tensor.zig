@@ -86,22 +86,22 @@ test "slice" {
 }
 test "matmul 3x4 4x2" {
     var data1: [12]f64 = createSequence(f64, 12);
-    var tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 3, 4 }), &data1);
+    const tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 3, 4 }), &data1);
     var data2: [8]f64 = createSequence(f64, 8);
-    var tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 4, 2 }), &data2);
+    const tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 4, 2 }), &data2);
 
     var data3: [6]f64 = createSequence(f64, 6);
     var result = Tensor(f64, 2).from(.rowMajor(.{ 3, 2 }), &data3);
-    try result.matmul(std.testing.allocator, std.testing.io, &tensor1, &tensor2);
+    try result.matmul(std.testing.allocator, std.testing.io, tensor1, tensor2);
     try expectEqual(result.metadata.shape, [_]usize{ 3, 2 });
 }
 test "matmulNew 3x4 4x2" {
     var data1: [12]f64 = createSequence(f64, 12);
-    var tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 3, 4 }), &data1);
+    const tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 3, 4 }), &data1);
     var data2: [8]f64 = createSequence(f64, 8);
-    var tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 4, 2 }), &data2);
+    const tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 4, 2 }), &data2);
 
-    const result = try op.matmul(std.testing.allocator, std.testing.io, &tensor1, &tensor2);
+    const result = try op.matmul(std.testing.allocator, std.testing.io, tensor1, tensor2);
     defer result.deinit(std.testing.allocator);
     try expectEqual(result.metadata.shape, [_]usize{ 3, 2 });
 }
@@ -131,7 +131,7 @@ test "wise element-wise addition with scalar (in place)" {
     var data: [4]f64 = .{ 1, 2, 3, 4 };
     var tensor = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), data[0..]);
     var result = try Tensor(f64, 2).alloc(std.testing.allocator, .rowMajor(.{ 2, 2 }));
-    result.wise(.{ @as(f64, 10), &tensor }, (struct {
+    _ = result.wise(.{ @as(f64, 10), &tensor }, (struct {
         pub fn func(args: struct { f64, f64 }) f64 {
             const a, const b = args;
             return a + b;
@@ -149,7 +149,7 @@ test "wise element-wise addition with tensor (in place)" {
     var tensor1 = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), data1[0..]);
     var tensor2 = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), data2[0..]);
     var result = try Tensor(f64, 2).alloc(std.testing.allocator, .rowMajor(.{ 2, 2 }));
-    result.wise(.{ &tensor1, &tensor2 }, (struct {
+    _ = result.wise(.{ &tensor1, &tensor2 }, (struct {
         pub fn func(args: struct { f64, f64 }) f64 {
             const a, const b = args;
             return a + b;

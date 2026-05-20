@@ -57,7 +57,7 @@ test "ref operations - wise" {
     var result = try Tensor(f64, 1).alloc(std.testing.allocator, .rowMajor(.{3}));
     defer result.deinit(std.testing.allocator);
 
-    result.wise(.{ &ref1, &ref2 }, (struct {
+    _ = result.wise(.{ &ref1, &ref2 }, (struct {
         pub fn func(args: struct { f64, f64 }) f64 {
             const a, const b = args;
             return a + b;

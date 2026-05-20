@@ -68,7 +68,7 @@ test "reference operations - wise through reference" {
     const tensor2_ref = &tensor2;
     var result = Tensor(f64, 2).from(.rowMajor(.{ 2, 2 }), data1[0..]);
 
-    result.wise(.{ tensor1_ref, tensor2_ref }, func.addFactory(f64, 2));
+    _ = result.wise(.{ tensor1_ref, tensor2_ref }, func.addFactory(f64, 2));
 
     try expectEqual(11, result.scalar(.{ 0, 0 }));
     try expectEqual(22, result.scalar(.{ 0, 1 }));

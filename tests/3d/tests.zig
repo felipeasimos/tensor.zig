@@ -220,7 +220,7 @@ test "matmul" {
     const reshaped_ref_to_2 = ref_to_2.reshape(.{ 2, 4 });
     try expectEqual(.{ 2, 4 }, reshaped_ref_to_2.metadata.shape);
     try expectEqual(8, reshaped_ref_to_2.metadata.numScalars());
-    const result = try op.matmul(std.testing.allocator, std.testing.io, &subtensor1, subtensor2.ref(.{}).reshape(.{ 2, 4 }));
+    const result = try op.matmul(std.testing.allocator, std.testing.io, subtensor1, subtensor2.ref(.{}).reshape(.{ 2, 4 }));
     defer result.deinit(std.testing.allocator);
 
     try expectEqual(.{ 4, 4 }, result.metadata.shape);
@@ -231,7 +231,7 @@ test "wise element-wise addition with scalar (in place)" {
     const tensor = Tensor(f64, 3).from(.rowMajor(.{ 2, 2, 2 }), data[0..]);
     var result = try Tensor(f64, 3).alloc(std.testing.allocator, .rowMajor(.{ 2, 2, 2 }));
     defer result.deinit(std.testing.allocator);
-    result.wise(.{ @as(f64, 10), &tensor }, (struct {
+    _ = result.wise(.{ @as(f64, 10), &tensor }, (struct {
         pub fn func(args: struct { f64, f64 }) f64 {
             const a, const b = args;
             return a + b;
@@ -253,7 +253,7 @@ test "wise element-wise addition with tensor (in place)" {
     var tensor2 = Tensor(f64, 3).from(.rowMajor(.{ 2, 2, 2 }), data2[0..]);
     var result = try Tensor(f64, 3).alloc(std.testing.allocator, .rowMajor(.{ 2, 2, 2 }));
     defer result.deinit(std.testing.allocator);
-    result.wise(.{ &tensor1, &tensor2 }, (struct {
+    _ = result.wise(.{ &tensor1, &tensor2 }, (struct {
         pub fn func(args: struct { f64, f64 }) f64 {
             const a, const b = args;
             return a + b;

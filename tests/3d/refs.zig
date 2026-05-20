@@ -130,7 +130,7 @@ test "reference operations - wise through reference" {
     var result: Tensor(f64, 3) = try .alloc(std.testing.allocator, .rowMajor(.{ 2, 2, 2 }));
     defer result.deinit(std.testing.allocator);
 
-    result.wise(.{ tensor1_ref, tensor2_ref }, func.addFactory(f64, 2));
+    _ = result.wise(.{ tensor1_ref, tensor2_ref }, func.addFactory(f64, 2));
 
     try expectEqual(11, result.scalar(.{ 0, 0, 0 }));
     try expectEqual(22, result.scalar(.{ 0, 0, 1 }));
