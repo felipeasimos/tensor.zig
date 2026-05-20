@@ -374,3 +374,23 @@ test "pack into different major" {
     try expectEqual(10, tensor.scalar(.{ 2, 2 }));
     try expectEqual(11, tensor.scalar(.{ 3, 2 }));
 }
+
+test "reduce with scalar product - in place" {
+    var data: [6]f64 = .{ 1, 2, 3, 4, 5, 6 };
+    const tensor = Tensor(f64, 2).from(.rowMajor(.{ 2, 3 }), data[0..]);
+    var result = try Tensor(f64, 1).alloc(std.testing.allocator, .rowMajor(.{3}));
+    defer result.deinit(std.testing.allocator);
+
+    var zeros = try Tensor(f64, 1).zeroes(std.testing.allocator, .rowMajor(.{3}));
+    defer zeros.deinit(std.testing.allocator);
+
+    result.reduce(zeros, .{tensor}, (struct {
+        pub fn f(args: struct { Tensor(f64, 1) }, acc: Tensor(f64, 1)) Tensor(f64, 1) {
+            return acc.wise(.{ acc, args[0] }, func.addFactory(f64, 2));
+        }
+    }).f);
+
+    try expectEqual(5, result.scalar(.{0}));
+    try expectEqual(7, result.scalar(.{1}));
+    try expectEqual(9, result.scalar(.{2}));
+}

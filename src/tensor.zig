@@ -255,7 +255,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
                 return self.scalar(idxs);
             }
             var clone_ptr = try alloc(allocator, self.metadata);
-            _ = clone_ptr.copy(self);
+            _ = clone_ptr.copy(self.*);
             return clone_ptr;
         }
 
@@ -270,14 +270,14 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             return result;
         }
 
-        pub inline fn copy(self: *const @This(), other: *const Tensor(ScalarType, n_dims)) @This() {
+        pub inline fn copy(self: *const @This(), other: Tensor(ScalarType, n_dims)) @This() {
             std.debug.assert(self.metadata.eql(other.metadata));
             self._copy(other);
             return self.*;
         }
 
         /// doesn't have assert check, which allows it to be use by things like 'pack'
-        inline fn _copy(self: *const @This(), other: *const Tensor(ScalarType, n_dims)) void {
+        inline fn _copy(self: *const @This(), other: Tensor(ScalarType, n_dims)) void {
             var self_it = other.indicesIter();
             var from_it = other.indicesIter();
 
@@ -294,7 +294,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             if (current_layout == major) return self.clone(allocator, .{});
             const new_metadata = Metadata.major(major, self.metadata.shape);
             var clone_ptr = try alloc(allocator, new_metadata);
-            clone_ptr._copy(self);
+            clone_ptr._copy(self.*);
             return clone_ptr;
         }
 
@@ -389,7 +389,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
                 accumulator = f(dtypes, accumulator);
             }
             if (comptime op.isTensor(AccumulatorType)) {
-                self.copy(accumulator);
+                _ = self.copy(accumulator);
             } else {
                 self.scalarRef(.{0}).* = accumulator;
             }
