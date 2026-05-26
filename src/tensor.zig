@@ -37,22 +37,22 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             pub fn eql(self: @This(), other: @This()) bool {
                 return self.eqlShape(other) and self.eqlStrides(other);
             }
-            pub fn major(layout: utils.MemoryLayout, shape: [n_dims]usize) @This() {
+            pub fn major(layout: utils.MemoryLayout, init_shape: [n_dims]usize) @This() {
                 return switch (layout) {
-                    .ColumnMajor => columnMajor(shape),
-                    .RowMajor => rowMajor(shape),
+                    .ColumnMajor => columnMajor(init_shape),
+                    .RowMajor => rowMajor(init_shape),
                 };
             }
-            pub fn rowMajor(shape: [n_dims]usize) @This() {
+            pub fn rowMajor(init_shape: [n_dims]usize) @This() {
                 return .{
-                    .shape = shape,
-                    .strides = utils.calculateStridesRowMajor(shape),
+                    .shape = init_shape,
+                    .strides = utils.calculateStridesRowMajor(init_shape),
                 };
             }
-            pub fn columnMajor(shape: [n_dims]usize) @This() {
+            pub fn columnMajor(init_shape: [n_dims]usize) @This() {
                 return .{
-                    .shape = shape,
-                    .strides = utils.calculateStridesColumnMajor(shape),
+                    .shape = init_shape,
+                    .strides = utils.calculateStridesColumnMajor(init_shape),
                 };
             }
             pub fn isContinuous(self: *const @This()) bool {
@@ -74,6 +74,8 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
         metadata: Metadata,
         data: []ScalarType,
 
+        /// for floats, generate values between 0 and 1
+        /// for ints, generate random values between minimum and maximum
         pub fn randomize(self: *const @This(), rand: std.Random) @This() {
             const sampler = comptime switch (@typeInfo(ScalarType)) {
                 .comptime_int, .int => struct {
@@ -108,6 +110,14 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
                 data_ptr.* = sampler(rand);
             }
             return self.*;
+        }
+
+        pub inline fn shape(self: *const @This()) [n_dims]usize {
+            return self.metadata.shape;
+        }
+
+        pub inline fn strides(self: *const @This()) [n_dims]usize {
+            return self.metadata.strides;
         }
 
         pub fn from(metadata: Metadata, data: []ScalarType) @This() {
