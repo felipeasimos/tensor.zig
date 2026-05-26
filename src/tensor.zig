@@ -22,14 +22,20 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
         pub const Metadata = struct {
             strides: [n_dims]usize,
             shape: [n_dims]usize,
-            pub fn eql(self: @This(), other: @This()) bool {
-                for (self.strides, other.strides) |s, o| {
-                    if (s != o) return false;
-                }
+            pub fn eqlShape(self: @This(), other: @This()) bool {
                 for (self.shape, other.shape) |s, o| {
                     if (s != o) return false;
                 }
                 return true;
+            }
+            pub fn eqlStrides(self: @This(), other: @This()) bool {
+                for (self.strides, other.strides) |s, o| {
+                    if (s != o) return false;
+                }
+                return true;
+            }
+            pub fn eql(self: @This(), other: @This()) bool {
+                return self.eqlShape(other) and self.eqlStrides(other);
             }
             pub fn major(layout: utils.MemoryLayout, shape: [n_dims]usize) @This() {
                 return switch (layout) {
@@ -270,14 +276,14 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             return result;
         }
 
-        pub inline fn copy(self: *const @This(), other: Tensor(ScalarType, n_dims)) @This() {
-            std.debug.assert(self.metadata.eql(other.metadata));
-            self._copy(other);
-            return self.*;
+        /// like 'copy', but also copy the metadata
+        pub inline fn deepCopy(self: *const @This(), other: @This()) void {
+            self.metadata = other.metadata;
+            self.copy(other);
         }
 
         /// doesn't have assert check, which allows it to be use by things like 'pack'
-        inline fn _copy(self: *const @This(), other: Tensor(ScalarType, n_dims)) void {
+        pub inline fn copy(self: *const @This(), other: @This()) void {
             var self_it = other.indicesIter();
             var from_it = other.indicesIter();
 
@@ -294,7 +300,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             if (current_layout == major) return self.clone(allocator, .{});
             const new_metadata = Metadata.major(major, self.metadata.shape);
             var clone_ptr = try alloc(allocator, new_metadata);
-            clone_ptr._copy(self.*);
+            clone_ptr.copy(self.*);
             return clone_ptr;
         }
 
@@ -420,7 +426,6 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
         fn checkSliceRanges(self: *const @This(), ranges: anytype) bool {
             inline for (ranges, 0..) |range, i| {
                 if (range[1] <= range[0] or range[1] > self.metadata.shape[i]) {
-                    std.debug.print("invalid ranges for shape ({any}): {any}", .{ self.metadata.shape, ranges });
                     return false;
                 }
             }

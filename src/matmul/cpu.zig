@@ -81,6 +81,9 @@ fn WorkerRowMajor(comptime T: type, comptime n_accumulators: usize) type {
             const row_remainder = c.metadata.shape[0] % n_accumulators;
             const column_remainder = c.metadata.shape[1] % VecLen;
 
+            const full_rows = c.metadata.shape[0] - row_remainder;
+            const full_columns = c.metadata.shape[1] - column_remainder;
+
             var a = unpacked_a.pack(allocator, .ColumnMajor) catch @panic("Couldn't allocate memory for packed A");
             defer a.deinit(allocator);
             var b = unpacked_b.pack(allocator, .RowMajor) catch @panic("Couldn't allocate memory for packed B");
@@ -89,40 +92,75 @@ fn WorkerRowMajor(comptime T: type, comptime n_accumulators: usize) type {
             // full part
             if (c.metadata.shape[0] > n_accumulators and c.metadata.shape[1] > VecLen) {
                 var c_slice = c.slice(.{
-                    .{ 0, c.metadata.shape[0] - row_remainder },
-                    .{ 0, c.metadata.shape[1] - column_remainder },
+                    .{ 0, full_rows },
+                    .{ 0, full_columns },
                 });
                 const a_slice = a.slice(.{
-                    .{ 0, c.metadata.shape[0] - row_remainder },
+                    .{ 0, full_rows },
                     .{ 0, a.metadata.shape[1] },
                 });
                 const b_slice = b.slice(.{
                     .{ 0, b.metadata.shape[0] },
-                    .{ 0, b.metadata.shape[1] - column_remainder },
+                    .{ 0, full_columns },
                 });
                 macrokernelFull(&c_slice, a_slice, b_slice);
             }
-            if (row_remainder > 0 or column_remainder > 0) {
-                const first_row_index = if (c.metadata.shape[0] <= n_accumulators)
-                    0
-                else
-                    c.metadata.shape[0] - row_remainder;
-                const first_column_index = if (c.metadata.shape[1] <= VecLen)
-                    0
-                else
-                    c.metadata.shape[1] - column_remainder;
+            // bottom row
+            if (row_remainder > 0 and full_columns > 0) {
                 var c_slice = c.slice(.{
-                    .{ first_row_index, c.metadata.shape[0] },
-                    .{ first_column_index, c.metadata.shape[1] },
+                    .{ full_rows, c.metadata.shape[0] },
+                    .{ 0, full_columns },
                 });
                 const a_slice = a.slice(.{
-                    .{ first_row_index, c.metadata.shape[0] },
+                    .{ full_rows, a.metadata.shape[0] },
                     .{ 0, a.metadata.shape[1] },
                 });
                 const b_slice = b.slice(.{
                     .{ 0, b.metadata.shape[0] },
-                    .{ first_column_index, b.metadata.shape[1] },
+                    .{ 0, full_columns },
                 });
+                macrokernelPartial(
+                    &c_slice,
+                    a_slice,
+                    b_slice,
+                );
+            }
+            // right column
+            if (column_remainder > 0 and full_rows > 0) {
+                var c_slice = c.slice(.{
+                    .{ 0, full_rows },
+                    .{ full_columns, c.metadata.shape[1] },
+                });
+                const a_slice = a.slice(.{
+                    .{ 0, c.metadata.shape[0] },
+                    .{ 0, a.metadata.shape[1] },
+                });
+                const b_slice = b.slice(.{
+                    .{ 0, b.metadata.shape[0] },
+                    .{ full_columns, c.metadata.shape[1] },
+                });
+                macrokernelPartial(
+                    &c_slice,
+                    a_slice,
+                    b_slice,
+                );
+            }
+            if (row_remainder > 0 and column_remainder > 0) {
+                var c_slice = c.slice(.{
+                    .{ full_rows, c.metadata.shape[0] },
+                    .{ full_columns, c.metadata.shape[1] },
+                });
+
+                const a_slice = a.slice(.{
+                    .{ full_rows, c.metadata.shape[0] },
+                    .{ 0, a.metadata.shape[1] },
+                });
+
+                const b_slice = b.slice(.{
+                    .{ 0, b.metadata.shape[0] },
+                    .{ full_columns, c.metadata.shape[1] },
+                });
+
                 macrokernelPartial(
                     &c_slice,
                     a_slice,

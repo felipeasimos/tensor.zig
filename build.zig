@@ -4,22 +4,12 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const zgpu = b.dependency("zgpu", .{});
     const lib = b.addModule("tensor", .{
         .root_source_file = b.path("src/tensor.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{
-            .{ .name = "zgpu", .module = zgpu.module("root") },
-        },
+        .imports = &.{},
     });
-
-    // Adds platform-specific library search paths and links the
-    // prebuilt dawn library to the executable.
-    @import("zgpu").addLibraryPathsTo(lib);
-
-    // Link the zdawn C/C++ wrapper artifact.
-    lib.linkLibrary(zgpu.artifact("zdawn"));
 
     const test_mod = b.createModule(.{
         .root_source_file = b.path("tests/tests.zig"),
