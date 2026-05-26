@@ -83,8 +83,14 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
                 }.sample,
                 .comptime_float, .float => struct {
                     inline fn sample(r: std.Random) ScalarType {
+                        if (comptime ScalarType == f16) {
+                            var f: ScalarType = undefined;
+                            r.bytes(std.mem.asBytes(&f));
+                            return f;
+                        } else {
+                            return r.float(ScalarType);
+                        }
                         // For uniform:
-                        return r.float(ScalarType);
                         // Or, for normal:
                         // var n = std.rand.Normal(dtype).init(r);
                         // return n.sample();
@@ -501,7 +507,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             return .init(self);
         }
 
-        pub inline fn dataRefIter(self: *const @This()) iterator.DataIterator(@This()) {
+        pub inline fn dataRefIter(self: *const @This()) iterator.DataRefIterator(@This()) {
             return .init(self);
         }
 

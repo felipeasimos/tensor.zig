@@ -141,22 +141,21 @@ pub fn DataIterator(comptime T: type) type {
 
 pub fn DataRefIterator(comptime TensorType: type) type {
     const T = utils.getChildType(TensorType);
-    const shape_arr = T.Shape;
-    const strides_arr = T.Strides;
-    const dtype = T.Dtype;
+    const n_dims = T.n_dims;
+    const dtype = T.ScalarType;
 
     return struct {
         pub const Type: IteratorType = .dataRef;
         const Self = @This();
 
-        tensor: *T,
-        current_indices: @TypeOf(shape_arr),
+        tensor: *const T,
+        current_indices: [n_dims]usize,
         finished: bool,
 
-        pub fn init(tensor: *T) Self {
+        pub fn init(tensor: *const T) Self {
             return Self{
                 .tensor = tensor,
-                .current_indices = @as(@Vector(shape_arr.len, usize), @splat(0)),
+                .current_indices = @as(@Vector(n_dims, usize), @splat(0)),
                 .finished = false,
             };
         }
@@ -165,8 +164,8 @@ pub fn DataRefIterator(comptime TensorType: type) type {
             if (self.finished) return null;
 
             const current_idx = self.current_indices;
-            incrementIndices(self, shape_arr);
-            const data_idx = utils.getIndexAt(current_idx, strides_arr);
+            incrementIndices(self, self.tensor.metadata.shape);
+            const data_idx = utils.getIndexAt(current_idx, self.tensor.metadata.strides);
             return &self.tensor.data[data_idx];
         }
     };
