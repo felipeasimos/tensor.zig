@@ -257,9 +257,7 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
             if (comptime n_dims == idxs.len) {
                 return self.scalarRef(idxs);
             }
-            const strides_to_sub_tensor: [idxs.len]usize = self.metadata.strides[0..idxs.len].*;
             const start_idx = utils.getIndexAt(idxs, self.metadata.strides);
-            const final_idx = start_idx + strides_to_sub_tensor[idxs.len - 1];
 
             const NewTensorType = SubTensor(idxs.len);
             const new_shape = self.metadata.shape[idxs.len..n_dims].*;
@@ -267,6 +265,8 @@ pub fn Tensor(comptime ElementType: type, comptime NDims: usize) type {
                 .RowMajor => NewTensorType.Metadata.rowMajor(new_shape),
                 .ColumnMajor => NewTensorType.Metadata.columnMajor(new_shape),
             };
+            const needed_len = new_metadata.highestIndex() + 1;
+            const final_idx = start_idx + needed_len;
 
             return NewTensorType.from(new_metadata, self.data[start_idx..final_idx]);
         }
